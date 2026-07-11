@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>학교생활기록부 점검기 (2026)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  :root{
+    --bg:#eceff5; --panel:#ffffff; --ink:#0f172a; --muted:#64748b; --line:#e6e9f1; --line2:#eef1f6;
+    --brand:#4f46e5; --brand-2:#6d64ee; --brand-weak:#eef0fe;
+    --err:#dc2626; --err-bg:#fef2f2; --err-mark:#fcd9d6;
+    --warn:#b45309; --warn-bg:#fffaeb; --warn-mark:#fce4bf;
+    --info:#0e7490; --info-bg:#ecfeff; --info-mark:#c8ebf0;
+    --ok:#15803d; --ok-bg:#f0fdf4; --blind-mark:#f6cae7;
+    --shadow:0 1px 2px rgba(15,23,42,.04),0 6px 20px rgba(15,23,42,.06);
+    --shadow-sm:0 1px 2px rgba(15,23,42,.05);
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic","맑은 고딕",sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.6;font-size:14px;-webkit-font-smoothing:antialiased}
+  header{background:radial-gradient(1100px 260px at 15% -60%,rgba(255,255,255,.28),transparent),linear-gradient(120deg,#4b40dd,#7b6ff2);
+         color:#fff;padding:30px 26px 40px}
+  header .hwrap{max-width:1160px;margin:0 auto}
+  header h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.4px;display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+  header .badge{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);padding:4px 11px;border-radius:999px;font-size:12px;font-weight:600}
+  header p{margin:11px 0 0;opacity:.92;font-size:13px;max-width:820px}
+  .wrap{max-width:1160px;margin:-22px auto 0;padding:0 20px 44px;position:relative}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;margin-bottom:18px;box-shadow:var(--shadow)}
+  .panel h2{margin:0 0 16px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px;letter-spacing:-.2px}
+  .panel h2 .num{background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;width:24px;height:24px;border-radius:8px;
+        display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:0 0 auto;box-shadow:0 2px 6px rgba(79,70,229,.35)}
+  textarea{width:100%;min-height:150px;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13px;
+           font-family:inherit;line-height:1.75;resize:vertical;background:#fcfdff;transition:border-color .15s,box-shadow .15s}
+  textarea:focus,input[type=text]:focus,select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-weak)}
+  .hint{color:var(--muted);font-size:12.5px;margin:8px 0}
+  .row{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:5px;margin:6px 0}
+  .field label{font-size:12px;color:var(--muted);font-weight:600}
+  select,input[type=text]{border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:13px;font-family:inherit;background:#fff;transition:border-color .15s,box-shadow .15s}
+  button{cursor:pointer;font-family:inherit}
+  .btn{background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;border:none;border-radius:11px;padding:12px 24px;font-size:14px;font-weight:700;
+       box-shadow:0 3px 10px rgba(79,70,229,.28);transition:transform .08s,box-shadow .15s,filter .15s}
+  .btn:hover{filter:brightness(1.06);box-shadow:0 5px 16px rgba(79,70,229,.34)}
+  .btn:active{transform:translateY(1px)}
+  .btn.sec{background:#f1f3f9;color:#334155;box-shadow:none;font-weight:600;padding:9px 15px;font-size:13px;border-radius:10px}
+  .btn.sec:hover{background:#e7ebf4;filter:none;box-shadow:none}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .filedrop{border:1.5px dashed #c4cbdd;border-radius:14px;padding:26px 20px;text-align:center;color:var(--muted);
+            background:linear-gradient(#fbfcff,#f6f8ff);cursor:pointer;transition:.15s}
+  .filedrop:hover{border-color:var(--brand);background:var(--brand-weak)}
+  .filedrop.drag{background:var(--brand-weak);border-color:var(--brand)}
+  .drop-title{font-size:15px;font-weight:700;color:var(--ink)}
+  .drop-title .up{display:inline-flex;width:22px;height:22px;border-radius:7px;background:var(--brand-weak);color:var(--brand);align-items:center;justify-content:center;margin-right:8px;font-weight:800;vertical-align:-4px}
+  .editor{margin-top:16px}
+  .editor-label{font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:6px}
+  .filelist{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .filechip{display:inline-flex;align-items:center;gap:7px;background:#f1f3f9;border:1px solid var(--line);border-radius:10px;
+            padding:7px 8px 7px 11px;font-size:12.5px;font-weight:600;color:#334155;transition:background .12s,border-color .12s}
+  .filechip:hover{background:#e9edf6;border-color:#d2d9e8}
+  .filechip .doc{font-size:13px}
+  .filechip.bad{background:var(--err-bg);color:var(--err);border-color:#f3c9c4}
+  .filechip .rm{width:18px;height:18px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;
+                background:transparent;color:var(--muted);font-size:15px;line-height:1;opacity:0;transition:.12s;cursor:pointer}
+  .filechip:hover .rm{opacity:.85}
+  .filechip .rm:hover{background:var(--err-bg);color:var(--err);opacity:1}
+  table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
+  th,td{border-bottom:1px solid var(--line2);padding:9px 12px;text-align:left;vertical-align:top}
+  th{background:#f7f9fc;font-weight:700;color:#475569;position:sticky;top:0;font-size:12px}
+  tbody tr:hover{background:#f8faff}
+  tbody tr:last-child td{border-bottom:none}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .chip{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 11px;font-size:12px;font-weight:700;line-height:1.5}
+  .chip.err{background:var(--err-bg);color:var(--err)} .chip.warn{background:var(--warn-bg);color:var(--warn)}
+  .chip.info{background:var(--info-bg);color:var(--info)} .chip.ok{background:var(--ok-bg);color:var(--ok)}
+  mark{padding:1px 2px;border-radius:4px;font-weight:600}
+  mark.err{background:var(--err-mark)} mark.warn{background:var(--warn-mark)} mark.info{background:var(--info-mark)} mark.blind{background:var(--blind-mark)}
+  .rec{border:1px solid var(--line);border-radius:12px;margin-bottom:10px;overflow:hidden;background:#fff;transition:box-shadow .15s,border-color .15s}
+  .rec:hover{box-shadow:var(--shadow-sm)}
+  .rec-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;cursor:pointer}
+  .rec-head .who{font-weight:700;font-size:13.5px;letter-spacing:-.1px}
+  .rec-body{padding:14px 16px;border-top:1px solid var(--line2);display:none;background:#fbfcff}
+  .rec.open .rec-body{display:block}
+  .rec.clean{opacity:.9}
+  .rec.clean .rec-head .who{font-weight:600;color:#475569}
+  .txtbox{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;white-space:pre-wrap;word-break:break-all;margin-bottom:12px;max-height:230px;overflow:auto;line-height:1.8}
+  .issue{display:flex;gap:10px;padding:8px 0;border-top:1px dashed var(--line);font-size:13px}
+  .issue:first-child{border-top:none}
+  .issue .tag{flex:0 0 96px;font-weight:700;font-size:12px}
+  .issue .tag.err{color:var(--err)} .issue .tag.warn{color:var(--warn)} .issue .tag.info{color:var(--info)}
+  .sub{color:var(--muted);font-size:12px}
+  .summary{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+  .stat{background:linear-gradient(#fff,#fbfcff);border:1px solid var(--line);border-radius:12px;padding:12px 18px;min-width:112px;box-shadow:var(--shadow-sm)}
+  .stat b{font-size:24px;display:block;font-weight:800;letter-spacing:-.5px;line-height:1.2}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  details.ref{margin-top:4px}
+  details.ref summary{cursor:pointer;font-size:13px;color:var(--brand);font-weight:700}
+  code{background:#eef1f7;padding:1px 6px;border-radius:5px;font-size:12px;color:#475569}
+  .small{font-size:12px;color:var(--muted)}
+  .switch{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:#334155}
+  .switch input{accent-color:var(--brand);width:15px;height:15px}
+  .status{font-size:12.5px;margin-top:10px;padding:9px 12px;border-radius:10px;background:#f5f7fc;border:1px solid var(--line)}
+  .note{font-size:12.5px;background:var(--brand-weak);border:1px solid #d3d6fb;border-radius:10px;padding:9px 12px;margin:10px 0;color:#3730a3}
+  .arrow{transition:transform .18s;color:var(--muted)} .rec.open .arrow{transform:rotate(90deg)}
+  a{color:var(--brand)}
+  #dupSummary{margin-bottom:14px;border:1px solid #f4cfca;background:linear-gradient(#fff8f7,#fff);border-radius:12px;padding:14px 16px;box-shadow:var(--shadow-sm)}
+  #dupSummary .dhead{font-weight:700;margin-bottom:8px;color:var(--err);display:flex;align-items:center;gap:8px}
+  .dupgroup{padding:9px 0;border-top:1px dashed #f1d3ce}
+  .dupgroup:first-of-type{border-top:none;padding-top:2px}
+  .dupsnip{font-size:12.5px;color:#7c2d2d;margin-bottom:6px;line-height:1.55}
+  .dupmembers{display:flex;flex-wrap:wrap;gap:6px}
+  .dupmem{background:var(--err-bg);color:var(--err);border:1px solid #f3c9c4;border-radius:8px;padding:3px 10px;font-size:12.5px;font-weight:600;cursor:pointer;transition:.12s}
+  .dupmem:hover{background:#fbd5d0}
+</style>
+</head>
+<body>
+<header>
+  <div class="hwrap">
+    <h1>학교생활기록부 점검기 <span class="badge">2026학년도</span></h1>
+    <p>금지어·대체어 · 형식 규칙 · 사교육/고교블라인드 자동 점검. 서술형 영역(세특·창체·행동특성)만 점검하며, 모든 처리는 브라우저 안에서만 이루어져 데이터가 외부로 전송되지 않습니다.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- STEP 1 : 입력 -->
+  <div class="panel">
+    <h2><span class="num">1</span> 점검할 내용 넣기</h2>
+
+    <div class="filedrop" id="drop">
+      <div class="drop-title"><span class="up">↑</span>PDF · 엑셀 · CSV 올리기 <span class="sub" style="font-weight:500">(끌어놓거나 클릭)</span></div>
+      <div class="hint" style="margin-top:6px">학생별 생기부 PDF를 <b>한 번에 여러 개</b> 올릴 수 있습니다. 파일명이 학생 이름이 됩니다. 엑셀·CSV는 첫 행을 열 이름으로 인식합니다.</div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.pdf" multiple style="display:none">
+    </div>
+    <label class="switch" style="margin-top:10px"><input type="checkbox" id="pdfMerge" checked> PDF에서 줄바꿈으로 접힌 문장 자동 잇기(권장)</label>
+    <div id="fileList" class="filelist" style="display:none"></div>
+    <div id="pdfStatus" class="status" style="display:none"></div>
+
+    <div id="mapArea" style="display:none;margin-top:14px;border-top:1px solid var(--line2);padding-top:14px">
+      <div class="row">
+        <div class="field"><label>대상(이름·학번) 열</label><select id="colWho"></select></div>
+        <div class="field"><label>항목·과목 열</label><select id="colWhat"></select></div>
+        <div class="field"><label>점검할 내용 열 <b style="color:var(--err)">*</b></label><select id="colText"></select></div>
+      </div>
+      <div class="small" id="rowCount"></div>
+    </div>
+
+    <div class="editor">
+      <label class="editor-label">직접 입력 · 추출된 내용 (한 항목당 한 줄, 수정 가능)</label>
+      <textarea id="pasteArea" placeholder="여기에 세특 문장을 붙여넣거나, 위에서 올린 PDF의 추출 내용이 표시됩니다.&#10;엑셀에서 이름·과목·내용 열을 복사해 붙여넣으면 탭으로 자동 분리됩니다."></textarea>
+      <div id="pasteNote" class="note" style="display:none"></div>
+    </div>
+    <p class="hint">내용을 넣은 뒤 아래 <b>[점검 실행]</b>을 누르면 자동으로 불러와 점검합니다. 스캔(이미지) PDF는 글자가 추출되지 않습니다.</p>
+  </div>
+
+  <!-- STEP 2 : 설정 -->
+  <div class="panel">
+    <h2><span class="num">2</span> 점검 설정</h2>
+    <div class="row">
+      <div class="field" style="flex:1;min-width:280px">
+        <label>고교 블라인드 – 학교 식별 표현 (쉼표로 구분, 발견 시 오류 표시)</label>
+        <input type="text" id="blindTerms" placeholder="예) 동탄중앙고, 동탄중앙고등학교, 동탄중앙, 재단명, 축제명">
+      </div>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <label class="switch"><input type="checkbox" id="cBan" checked> 금지어·대체어</label>
+      <label class="switch"><input type="checkbox" id="cForm" checked> 형식 규칙(특수문자·명사형종결·한글원칙·공란)</label>
+      <label class="switch"><input type="checkbox" id="cPunct" checked> 문장부호·띄어쓰기(연속 공백·부호 모양)</label>
+      <label class="switch"><input type="checkbox" id="cEdu" checked> 사교육 유발 요소</label>
+      <label class="switch"><input type="checkbox" id="cBlind" checked> 고교 블라인드</label>
+      <label class="switch"><input type="checkbox" id="cDup" checked> 학생 간 복사·중복</label>
+      <label class="switch"><input type="checkbox" id="cNeis" checked> 나이스 양식(영역제목·표머리글)·머리글·바닥글 자동 제외</label>
+    </div>
+    <div class="field" style="margin-top:8px">
+      <label>영문 허용 단어 (한글원칙 예외 · 쉼표로 구분)</label>
+      <input type="text" id="allowEng" value="CEO,PD,UCC,IT,POP,CF,TV,PAPS,SNS,PPT,AI,GPS,DNA,RNA,PCR,LED,USB,PC,IoT,3D,2D,cm,km,mm,kg,mg,kW,ml,mol,pH">
+    </div>
+    <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <button class="btn" id="runBtn">점검 실행 ▶</button>
+      <span id="loadStatus" class="small"></span>
+    </div>
+  </div>
+
+  <!-- STEP 3 : 결과 -->
+  <div class="panel" id="resultPanel" style="display:none">
+    <h2><span class="num">3</span> 점검 결과</h2>
+    <div class="summary" id="summary"></div>
+    <div id="studentSummary" style="margin-bottom:12px"></div>
+    <div id="dupSummary" style="display:none"></div>
+    <div class="toolbar">
+      <button class="btn sec" id="expandAll">모두 펼치기</button>
+      <button class="btn sec" id="collapseAll">모두 접기</button>
+      <label class="switch"><input type="checkbox" id="onlyIssues"> 문제 있는 항목만 보기</label>
+      <span id="studentFilterInfo" class="small" style="margin-left:auto"></span>
+      <button class="btn sec" id="downloadCsv">결과 CSV 저장</button>
+    </div>
+    <div id="results"></div>
+  </div>
+
+  <div class="panel">
+    <details class="ref">
+      <summary>점검 기준 안내 (근거: 2026 기재요령·길라잡이·연수자료·첨부 점검표)</summary>
+      <div class="small" style="margin-top:10px;line-height:1.7">
+        <b>· 금지어·대체어</b> — 브랜드·영어 표현은 일반명사로 대체 (첨부4 금지어 대체표현표). 예: 캔바→디자인 제작 플랫폼, 유튜브→동영상 플랫폼, MBTI→성격유형 검사, ESG→지속가능 경영.<br>
+        <b>· 한글 원칙(p.28)</b> — 문자는 한글로, 숫자는 아라비아 숫자로. 부득이한 경우만 영문(외국인 성명·도로명 영문·도서명/저자명 등 고유명사·일반화된 명사 CEO/PD/IT/AI 등·단위). 그 외 영문은 검토 필요.<br>
+        <b>· 특수문자·번호기호(p.30·p.40)</b> — 서술형 항목에 특수문자, 문단구분 기호(번호) 입력 지양.<br>
+        <b>· 명사형 종결(p.30)</b> — 서술형 문장은 명사형 종결어미(~함/~임/~음)로 끝냄. ‘~했다/~이다’ 등 평서형은 지양.<br>
+        <b>· 사교육 유발 금지(p.18~19)</b> — 교내외 대회/수상·어학시험·논문·도서출간·지식재산권·자격증·대학명·기관명·상호명·강사명·장학금·부모 배경 암시 등 서술형 항목 기재 불가. <span class="sub">(성적·모의고사는 점검 대상에서 제외)</span><br>
+        <b>· 고교 블라인드(p.19)</b> — 학교명·재단명·축제명·학교 별칭 등 고등학교를 알 수 있는 내용 기재 불가(인적·학적사항, 수여기관, 봉사 주관기관 제외).<br>
+        <b>· 점검 범위</b> — 이미 완성·업로드된 생기부의 <b>교사 서술 내용</b>만 점검합니다. 생기부 양식(영역 제목·표 머리글·출력 정보 등)은 자동 제외하며, 글자수·바이트와 성적은 점검하지 않습니다(나이스에서 이미 검증됨).<br>
+        <b>· 자동 점검의 한계</b> — 성취기준 근거·과장/허위·AI 생성 여부·비문·맥락 적합성은 사람의 판단이 필요합니다. 본 도구는 1차 스크리닝용이며 최종 확인은 교사가 수행하세요.
+      </div>
+    </details>
+  </div>
+
+  <p class="small" style="text-align:center;margin:20px 0">브라우저 내 처리 · 데이터 미전송 · 2026학년도 기재요령 기준</p>
+</div>
+
+<script>
+/* ---------------- 규칙 데이터 ---------------- */
+// 금지어 사전: variants(탐지어) → 대체어. risk:'low' 는 오탐 위험이 커 정확 매칭이 필요한 항목.
+const BAN = [
+  {t:["개더타운","Gather Town","제페토","ZEPETO","게더타운"], r:"메타버스 플랫폼"},
+  {t:["이프랜드","ifland"], r:"메타버스 소셜커뮤니케이션서비스"},
+  {t:["미리캔버스","miricanvas","망고보드","mangoboard","캔바","canva"], r:"디자인 제작 플랫폼"},
+  {t:["유튜브","YouTube","티빙","TVING","웨이브","wavve","넷플릭스","netflix","왓챠","watcha","디즈니플러스","disneyplus","구글 티비","Google TV"], r:"동영상 플랫폼 / 동영상 공유 서비스"},
+  {t:["유튜버","YouTuber"], r:"동영상 크리에이터 / 개인 미디어 제작자"},
+  {t:["OTT"], r:"동영상 플랫폼 / 동영상 공유 서비스"},
+  {t:["Vllo","VLLO","프리미어 프로","Premiere Pro","파이널 컷 프로","Final Cut Pro","프리미어프로","파이널컷","키네마스터","KineMaster"], r:"영상 제작/편집 프로그램"},
+  {t:["클래스팅","classting"], r:"학습 플랫폼 / 클래스관리 도구"},
+  {t:["카카오톡","카톡","KakaoTalk"], r:"메신저 서비스"},
+  {t:["인스타그램","Instagram","트위터","Twitter","페이스북","Facebook"], r:"소셜네트워크 서비스"},
+  {t:["패들렛","Padlet","띵커벨","ThinkerBell","Thinkerbell"], r:"온라인 협업 툴 / 협업 플랫폼"},
+  {t:["구글 문서","Google Docs","구글문서","구글 클래스룸","Google Classroom","구글클래스룸"], r:"온라인 문서 편집기 / 교육 플랫폼"},
+  {t:["네이버 밴드","네이버밴드","온라인 클래스"], r:"교육 플랫폼"},
+  {t:["커리어넷","careernet"], r:"진로정보망"},
+  {t:["메이저맵","majormap"], r:"진로 정보 사이트"},
+  {t:["홀랜드 검사","홀랜드검사","Holland"], r:"직업선호도 검사"},
+  {t:["MBTI"], r:"성격유형 검사"},
+  {t:["KTX","SRT"], r:"고속 열차"},
+  {t:["Zoom","줌 회의","화상 줌"], r:"화상 회의"},
+  {t:["VR"], r:"가상현실"},
+  {t:["AR"], r:"증강현실"},
+  {t:["HTML"], r:"하이퍼텍스트 마크업 언어 / 웹 페이지 제작 언어"},
+  {t:["CSS"], r:"스타일 시트 언어"},
+  {t:["아이패드","iPad","갤럭시탭","Galaxy Tab","갤럭시 탭"], r:"태블릿PC"},
+  {t:["크롬북","chromebook","chrome book"], r:"휴대용 컴퓨터"},
+  {t:["유네스코","UNESCO","유럽연합","IAEA","NATO","OECD","WTO"], r:"국제기구"},
+  {t:["틱톡","TikTok"], r:"엔터테인먼트 플랫폼"},
+  {t:["TED 영상","TED영상"], r:"온라인 강연회 영상"},
+  {t:["ESG"], r:"지속가능 경영"},
+  {t:["ETF"], r:"상장지수펀드"},
+  {t:["NFT"], r:"대체 불가능한 토큰"},
+  {t:["CCD"], r:"전하 결합 소자"},
+  {t:["파이썬","Python"], r:"프로그래밍 언어"},
+  // 정확 매칭이 필요한 흔한 단어(영문/괄호형만 탐지)
+  {t:["ZEPETO"], r:"메타버스 플랫폼"},
+];
+// 사교육 유발 요소 (검토 필요 · 주의)
+const EDU = [
+  {t:["토익","TOEIC","토플","TOEFL","텝스","TEPS","아이엘츠","IELTS","오픽","OPIC","HSK","JLPT","지텔프","G-TELP","텝스"], label:"공인어학시험"},
+  {t:["대회","공모전","올림피아드","경시대회","백일장","교내대회","교외대회","최우수상","우수상","장려상","입상","대상 수상"], label:"대회/수상"},
+  {t:["논문","학회지","투고","등재","도서 출간","저서 출간"], label:"논문/출간"},
+  {t:["특허","실용신안","상표 출원","디자인 출원","지식재산권"], label:"지식재산권"},
+  {t:["자격증","자격 취득","기능사","산업기사","기사 자격","기능장"], label:"자격증"},
+  {t:["장학생","장학금"], label:"장학"},
+  {t:["어학연수","해외 봉사"], label:"해외활동"},
+];
+// 특수문자/기호 (마침표·쉼표·괄호·가운뎃점·물결·퍼센트 제외)
+const SPECIAL = /[①-⑳㉠-㉻⓵-⓿※★☆●○◎◇◆■□▲△▶▷◀◁▪▫→←↔⇒✓✔♡♥♧♣【】〔〕《》〈〉「」『』]/g;
+// 번호/문단 기호: 아라비아 번호, 한글 순서표(가·나·다…), 원문자만. 명사형 종결(함.·음.·임.)이 오인되지 않도록 한글은 순서표 글자로 제한
+const NUMBERING = /(^|\n)\s*(\d{1,2}[).]|[가나다라마바사아자차카타파하][).]|[①-⑳㉠-㉻]|[-*•]\s)/g;
+
+// 사전을 단일 정규식으로 사전 컴파일(1회 통과로 전체 탐지 → 대용량에서 크게 빨라짐)
+function escRe(s){return s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");}
+const BAN_MAP=new Map(), EDU_MAP=new Map();
+BAN.forEach(e=>e.t.forEach(t=>{if(t&&!BAN_MAP.has(t))BAN_MAP.set(t,e.r);}));
+EDU.forEach(e=>e.t.forEach(t=>{if(t&&!EDU_MAP.has(t))EDU_MAP.set(t,e.label);}));
+// ASCII(영문) 단어는 앞뒤가 다른 알파벳이면 매칭하지 않음(AR이 START·PART 내부에 걸리지 않도록)
+function reTerm(t){ const e=escRe(t); return /^[\x00-\x7F]+$/.test(t) ? `(?<![A-Za-z])${e}(?![A-Za-z])` : e; }
+const BAN_RE=new RegExp([...BAN_MAP.keys()].sort((a,b)=>b.length-a.length).map(reTerm).join("|"),"g");
+const EDU_RE=new RegExp([...EDU_MAP.keys()].sort((a,b)=>b.length-a.length).map(reTerm).join("|"),"g");
+
+/* ---------------- 유틸 ---------------- */
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+// 생기부 영역 제목(앞에 번호가 붙을 수 있음)
+const NEIS_SECTION_RE=/^(?:\d{1,2}\s*[.)]\s*)?(인적[\s·・‧,]*학적사항|인적사항|학적사항|출결상황|수상경력|자격증[^]*?(취득상황|이수상황)|진로희망사항|창의적\s*체험활동상황|자율[\s·・‧]*자치활동|자율활동|자치활동|동아리활동|봉사활동\s*실적|봉사활동실적|봉사활동|진로활동|교과학습발달상황|(과목별|개인별|과목)?\s*세부능력\s*및\s*특기사항|독서활동상황|행동특성\s*및\s*종합의견|학교폭력\s*조치상황(\s*관리)?)\s*$/;
+// 표 열 머리글 판별(강한 신호는 1개, 약한 신호는 2개 이상)
+const NEIS_HDR_STRONG=/수여기관|발급기관|주관기관명|번호\s*또는\s*명칭|원점수\s*\/\s*과목평균/;
+const NEIS_HDR_WEAK=["등급(위)","연월일","석차등급","성취도","원점수","과목평균","이수단위","학점수","이수시간","취득","종목"];
+// 표 머리글에 쓰이는 라벨 단어들 — 줄 전체가 이 단어들로만 구성되면 머리글로 판단
+const NEIS_HDR_WORDS=new Set(["영역","시간","이수시간","인정시간","시수","특기사항","학년","학기","교과","과목","활동내용","장소","주관기관","주관기관명","일자","기간","연월일","등급","등급(위)","학점수","원점수","과목평균","성취도","석차등급","수강자수","표준편차","종목","번호","명칭","취득","발급기관","수여기관","대회명","봉사시간","누가기록","이수단위","단위수","비고","구분","순번","연번","제목","저자","도서명","단위","석차","백분위","평어","비고(표준편차)","(표준편차)(수강자수)"]);
+function looksNeisHeader(t){
+  if(/[.!?]\s*$/.test(t)) return false;              // 문장부호로 끝나면 서술 내용
+  if(NEIS_HDR_STRONG.test(t)) return true;           // 강한 신호(수여기관·발급기관 등)는 길이 무관
+  // 자간이 벌어져도 인식되도록 공백 제거 후 성적표/세특 표 머리글 문구 확인
+  const norm=t.replace(/\s+/g,"");
+  if(/세부능력및특기사항|수강자수|분포비율|이수학점|원점수\/?과목평균|성취도\(수강자수\)|석차등급비고/.test(norm)) return true;
+  const toks=t.split(/\s+/).map(x=>x.replace(/[,·・‧]+$/,"")).filter(Boolean);
+  if(toks.length>=2 && toks.every(w=>NEIS_HDR_WORDS.has(w))) return true;   // 라벨 단어로만 구성
+  if(t.length>60) return false;
+  let w=0; for(const k of NEIS_HDR_WEAK){ if(t.includes(k)) w++; }
+  return w>=2;
+}
+// 영어·외국어 교과인지 판별(과목 필드 또는 "영어:" 같은 앞머리 과목명) → 한글원칙(영문) 검사 제외
+function isLanguageSubject(what, text){
+  if(/영어|영미|영문|외국어|중국어|일본어|불어|프랑스어|독일어|스페인어|러시아어|아랍어|베트남어|한문/.test(what||"")) return true;
+  return /^\s*(영어|영미\s*문학|영어\s*회화|영어\s*독해|실용\s*영어|심화\s*영어|진로\s*영어|영어권\s*문화|영어\s*권\s*문화|영문법|영작문|기초\s*영어|중국어|일본어|프랑스어|독일어|스페인어|러시아어|아랍어|베트남어|한문|제2외국어)\s*[ⅠⅡⅢⅣ1-9IⅠ]*\s*[:：]/.test(text||"");
+}
+// 고교 과목명 목록(2015·2022 개정 주요 과목) — 세특의 과목 인식용
+const SUBJECT_LIST=["국어","화법과 작문","독서","언어와 매체","문학","화법과 언어","독서와 작문","주제 탐구 독서","문학과 영상","매체 의사소통",
+"수학","미적분","확률과 통계","기하","실용 수학","경제 수학","대수","미적분Ⅱ","미적분Ⅰ",
+"영어","영어 회화","영어 독해와 작문","실용 영어","영미 문학 읽기","진로 영어","영어권 문화","심화 영어","기초 영어","영어 독해","영어 작문",
+"한국사","통합사회","통합과학","과학탐구실험","사회","생활과 윤리","윤리와 사상","한국지리","세계지리","동아시아사","세계사","경제","정치와 법","사회·문화","여행지리","사회문제 탐구","세계시민과 지리","현대사회와 윤리","정치","법과 사회","윤리문제 탐구","인문학과 윤리","국제관계의 이해",
+"물리학","화학","생명과학","지구과학","과학사","생활과 과학","융합과학","과학의 역사와 문화","기후변화와 환경생태","물질과 에너지","화학 반응의 세계","세포와 물질대사","생물의 유전","지구시스템과학","행성우주과학",
+"체육","운동과 건강","스포츠 생활","체육 탐구","스포츠 문화","스포츠 과학",
+"음악","미술","음악 감상과 비평","미술 감상과 비평","음악 연주","미술 창작","연극","미술과 매체",
+"기술·가정","정보","가정과학","공학 일반","창의 경영","지식 재산 일반","인공지능 기초","데이터 과학","소프트웨어와 생활",
+"제2외국어","중국어","일본어","프랑스어","독일어","스페인어","러시아어","아랍어","베트남어","한문",
+"진로와 직업","논리학","심리학","교육학","종교학","논술","보건","환경","실용 경제","논리와 사고","인간과 철학"];
+const SUBJECT_SORTED=[...SUBJECT_LIST].sort((a,b)=>b.length-a.length);
+function normSubj(s){ return (s||"").replace(/[()（）\s·ⅠⅡⅢⅣ0-9]/g,""); }
+const SUBJECT_NORMSET=new Set(SUBJECT_LIST.map(normSubj));
+// 줄 전체가 과목명(짧은 마커 줄)인가
+function isSubjectMarker(line){
+  const s=(line||"").trim().replace(/^[\(（]/,"").replace(/[\)）]$/,"");
+  if(!s || s.length>16 || /[.!?]$/.test(s)) return false;
+  return SUBJECT_NORMSET.has(normSubj(s));
+}
+// 텍스트에서 과목명 추출: "영어:" 접두어, 또는 과목명으로 시작
+function subjectFromText(text){
+  const pre=subjPrefix(text); if(pre) return pre;
+  const t=(text||"").trim().replace(/^[\(（]/,"");
+  for(const sub of SUBJECT_SORTED){
+    if(t.startsWith(sub)){
+      const after=t.slice(sub.length);
+      const roman=(after.match(/^[ⅠⅡⅢⅣ0-9]+/)||[""])[0];
+      const nx=after.slice(roman.length,roman.length+1);
+      if(nx===""||nx===" "||nx===":"||nx==="："||nx===")"||nx==="）") return sub+roman;
+    }
+  }
+  return "";
+}
+// 영역 제목 줄이면 영역 키를 반환(아니면 null) — 이후 줄들의 검사 맥락으로 사용
+function detectSectionKey(t){
+  const s=(t||"").trim();
+  if(!NEIS_SECTION_RE.test(s)) return null;
+  if(/수상경력/.test(s)) return "award";
+  if(/자격증/.test(s)) return "cert";
+  if(/인적|학적/.test(s)) return "personal";
+  if(/출결/.test(s)) return "attendance";
+  if(/세부능력|교과학습발달/.test(s)) return "subject";
+  if(/독서활동/.test(s)) return "reading";
+  if(/행동특성|종합의견/.test(s)) return "behavior";
+  if(/창의적\s*체험활동|자율|자치|동아리|진로활동|봉사/.test(s)) return "creative";
+  return "other";
+}
+// 수상경력 개별 줄 형태(수상명 … 날짜 … 수여기관)로 보이면 true — 영역 제목을 못 만난 경우의 보조 판별
+function looksAwardLine(t){
+  const s=(t||"").trim();
+  return /\d{4}\.\s?\d{1,2}\.\s?\d{1,2}/.test(s) &&
+         /(학교장|교장|교육장|교육감|교육청장|장관|총장|학장|회장|이사장|원장|위원장|시장|도지사|군수|구청장)\s*$/.test(s);
+}
+// 영역별로 건너뛸 검사
+const SKIP_EDU=new Set(["award","cert","personal","attendance"]);   // 사교육(대회·수상·자격 등) 검사 제외 영역
+const SKIP_BLIND=new Set(["award","cert","personal"]);              // 블라인드(학교명) 허용 영역
+// 분량이 적어 사람이 확인하는 영역 — 아예 점검에서 제외(인적·학적/출결/수상경력/자격증)
+const SKIP_SECTIONS=new Set(["personal","attendance","award","cert"]);
+
+// 교과학습발달상황 성적 표 행 판별(원점수/과목평균(표준편차), 성취도(수강자수) A(317), 석차등급 등)
+function looksGradeRow(t){
+  const s=(t||"");
+  return /[A-E]\s*\(\s*\d+\s*\)/.test(s) ||                    // 성취도(수강자수) 예: A(317)
+         /\d+\s*\/\s*\d+(\.\d+)?\s*\(\s*\d/.test(s) ||          // 원점수/과목평균(표준편차) 예: 91/71.2(13.8)
+         /석차등급.*비고|성취도\s*\(\s*수강자수|원점수\s*\/\s*과목평균/.test(s) ||
+         /\d\s+[A-EP]\s*$/.test(s) ||                           // 체육·예술·진로선택 성취도 행(… 이수단위 성취도 A/B/C로 끝남)
+         /이수단위\s*합계/.test(s);                             // 이수단위 합계 N
+}
+// 정량 데이터(창체 이수시간 요약)·표준 플레이스홀더 — 교사 정성 서술이 아니므로 점검 제외
+function looksQuantitativeOrPlaceholder(t){
+  const s=(t||"");
+  // 창의적 체험활동 이수시간 요약(영역 키워드 2개 이상 + 숫자, 서술 문장 아님)
+  const areaHits=(s.match(/자율활동|자치활동|동아리활동|진로활동|봉사활동|이수시간|희망분야/g)||[]).length;
+  if(areaHits>=2 && /\d/.test(s) && !/[.!?]$/.test(s.trim())) return true;
+  // 표준 플레이스홀더(정성 평가 아님)
+  if(/해당\s*사항\s*없음|특이\s*사항\s*없음/.test(s)) return true;
+  if(/(순회교육|위탁학생|장기결석|미인정유학|유예)\s*으?로\s*.{0,12}없음/.test(s)) return true;
+  return false;
+}
+// 나이스 출력물의 머리글(문서명)·바닥글(학교/일시/IP/출력자)·양식(영역 제목·표 머리글·성적 표) 등 점검 대상이 아닌 줄 판별
+function isNeisBoilerplate(s){
+  const t=(s||"").trim();
+  if(!t) return false;   // 공란은 별도 규칙에서 처리
+  if(/\d{1,3}\.\d{1,3}\.[\d*]{1,3}\.[\d*]{1,3}/.test(t)) return true;               // IP(별표 마스킹 포함)
+  if(/\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.?\s+\d{1,2}:\d{2}/.test(t)) return true;         // 날짜 + 시각(출력 일시)
+  if(/학교생활\s*(세부사항)?\s*기록부/.test(t) && t.length<40) return true;            // 문서 제목
+  if(/^\s*\d+\s*\/\s*\d+\s*$/.test(t)) return true;                                   // 페이지 n / m
+  if(/^\s*[-–]?\s*\d+\s*(쪽|페이지|page)\s*[-–]?\s*$/i.test(t)) return true;           // 쪽 번호
+  if(NEIS_SECTION_RE.test(t)) return true;                                            // 영역 제목
+  if(looksNeisHeader(t)) return true;                                                 // 표 열 머리글
+  if(looksGradeRow(t)) return true;                                                   // 교과 성적 표 행(원점수·성취도·석차등급)
+  if(looksQuantitativeOrPlaceholder(t)) return true;                                  // 창체 이수시간 요약·"해당 사항 없음" 등 정량/플레이스홀더
+  if(!/[가-힣]/.test(t)) return true;                                                  // 한글이 전혀 없는 줄(번호·기호·숫자 조각)
+  if(t.length<=3 && /[.)\]]$/.test(t)) return true;                                    // "1)" "문)" "함." 등 줄바꿈 조각
+  return false;
+}
+
+// PDF에서 표 칸 안 문장이 여러 줄로 접힌 것을 원래 문장으로 이어붙임(문단 병합)
+function mergeWrapped(lines){
+  const out=[]; let buf="";
+  const flush=()=>{ const v=buf.replace(/\s+/g," ").trim(); if(v) out.push(v); buf=""; };
+  const structural=s=>
+    detectSectionKey(s) || looksNeisHeader(s) || looksAwardLine(s) || looksGradeRow(s) || looksQuantitativeOrPlaceholder(s) || isSubjectMarker(s) ||
+    /\d{1,3}\.\d{1,3}\.[\d*]{1,3}\.[\d*]{1,3}/.test(s) ||             // IP
+    /\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.?\s+\d{1,2}:\d{2}/.test(s) ||     // 날짜+시각
+    /학교생활\s*(세부사항)?\s*기록부/.test(s) ||                        // 문서명
+    /^\s*\d+\s*\/\s*\d+\s*$/.test(s);                                // 페이지 n/m
+  for(const raw of lines){
+    const s=(raw||"").trim();
+    if(!s){ flush(); continue; }
+    if(/^【\d+쪽】$/.test(s)){ flush(); out.push(s); continue; }           // 페이지 표시는 경계+보존
+    if(raw.includes("\t")){ flush(); out.push(raw.trim()); continue; }   // TSV(이름/과목/내용)는 독립
+    if(structural(s)){ flush(); out.push(s); continue; }                 // 구조 줄은 경계+독립
+    buf = buf ? buf+" "+s : s;
+    if(/[.!?]["'”’)\]]?$/.test(s)) flush();                              // 문장 종료로 끝나면 완결
+  }
+  flush();
+  return out;
+}
+
+/* ---------------- 점검 엔진 ---------------- */
+function analyze(text, opts, ctx, what){
+  const issues=[];      // {sev, type, msg, ranges:[[s,e,cls]]}
+  const t = text||"";
+  const section = ctx||null;
+  const langSubj = isLanguageSubject(what, t);   // 영어·외국어 교과면 한글원칙(영문) 검사 제외
+  const isAward = section==="award" || looksAwardLine(t);
+  const skipEdu = SKIP_EDU.has(section) || isAward;      // 수상경력·자격증 등에서는 사교육 검사 제외
+  const skipBlind = SKIP_BLIND.has(section) || isAward;  // 학교명 허용 영역에서는 블라인드 제외
+  const push=(sev,type,msg,ranges)=>issues.push({sev,type,msg,ranges:ranges||[]});
+
+  // 공란
+  if(!t.trim()){ push("err","공란","내용이 비어 있음 — 세특 등 서술형은 공란 불가."); return {issues, chars:0}; }
+
+  // 금지어 (단일 정규식 1회 통과)
+  if(opts.ban){
+    BAN_RE.lastIndex=0; let m; const hits=new Map();
+    while((m=BAN_RE.exec(t))){ const term=m[0]; (hits.get(term)||hits.set(term,[]).get(term)).push([m.index,m.index+term.length,"err"]); if(BAN_RE.lastIndex===m.index)BAN_RE.lastIndex++; }
+    for(const [term,ranges] of hits){ push("err","금지어",`‘${term}’ → <b>${BAN_MAP.get(term)}</b> (으)로 대체 필요`, ranges); }
+  }
+  // 사교육 (단일 정규식 1회 통과) — 수상경력·자격증 등 정상 영역은 제외
+  if(opts.edu && !skipEdu){
+    EDU_RE.lastIndex=0; let m; const hits=new Map();
+    while((m=EDU_RE.exec(t))){ const term=m[0]; (hits.get(term)||hits.set(term,[]).get(term)).push([m.index,m.index+term.length,"warn"]); if(EDU_RE.lastIndex===m.index)EDU_RE.lastIndex++; }
+    for(const [term,ranges] of hits){ push("warn","사교육","검토 필요 ["+EDU_MAP.get(term)+"] — ‘"+term+"’ 은 사교육 유발/기재 불가 요소일 수 있음", ranges); }
+  }
+  // 블라인드 — 인적·학적/수상경력 수여기관/자격증 발급기관은 학교명 허용이므로 제외
+  if(opts.blind && !skipBlind){
+    for(const term of opts.blindTerms){
+      if(!term) continue;
+      const ranges=findAll(t, term, "blind");
+      if(ranges.length){ push("err","블라인드",`고교 식별 표현 ‘${term}’ 발견 — 기재 불가`, ranges); }
+    }
+  }
+  // 형식: 특수문자
+  if(opts.form){
+    let m, sp=[];SPECIAL.lastIndex=0;
+    while((m=SPECIAL.exec(t))){ sp.push([m.index,m.index+m[0].length,"warn"]); }
+    if(sp.length) push("warn","특수문자",`특수문자/기호 ${sp.length}개 발견 — 서술형 항목에 특수문자·기호 입력 지양`, sp);
+    // 번호/문단기호
+    NUMBERING.lastIndex=0; let nm, nb=[];
+    while((nm=NUMBERING.exec(t))){ const s=nm.index+nm[1].length; nb.push([s,s+nm[2].length,"warn"]); if(NUMBERING.lastIndex===nm.index)NUMBERING.lastIndex++; }
+    if(nb.length) push("warn","번호기호",`문단구분 기호(번호) ${nb.length}개 — 지양 대상`, nb);
+
+    // 한글 원칙: 허용 외 영문 (영어·외국어 교과는 제외)
+    if(!langSubj){
+      const allow=opts.allowSet;
+      let em, eng=[];
+      // 창의적 체험활동은 맨 앞 "(동아리명)(시간)" 괄호 안 영문을 허용
+      let skipEnd=0;
+      if(section==="creative"){ const mp=t.match(/^\s*(?:[\(（][^\)）]*[\)）]\s*)+/); if(mp) skipEnd=mp[0].length; }
+      const scan=blankQuotes(t);   // 따옴표(도서명·저자명 등 고유명사) 안 영문은 검사 제외
+      const ENG=/[A-Za-z][A-Za-z.\-]*[A-Za-z]/g;   // 2글자 이상 영어 단어만(한 글자 변수·기호 n·X·G 등은 제외)
+      while((em=ENG.exec(scan))){
+        if(em.index < skipEnd) continue;             // 동아리명·활동명(맨 앞 괄호) 안 영문은 제외
+        const w=em[0];
+        if(allow.has(w.toUpperCase())) continue;      // 사용자 허용 목록
+        if(/^[IVXLCDM]+$/.test(w)) continue;          // 로마 숫자 표기(II, III …)
+        if(/^[A-Z][A-Z0-9]{1,5}$/.test(w)) continue;  // 대문자 약어(일반화된 명사·전문 용어: CEO·DNA·AI·LED·TV·SNS 등)
+        if(EN_UNITS.has(w)) continue;                 // 과학·수학 단위(cm·kg·Hz 등)
+        eng.push([em.index,em.index+w.length,"info"]);
+      }
+      if(eng.length) push("info","한글원칙",`영문 표현 ${eng.length}건 — 부득이한 경우만 영문(단위·약어·외국인명·도서명 등은 허용). 허용 대상인지 확인`, eng);
+    }
+
+    // 명사형 종결
+    const badEnd=checkEndings(t);
+    if(badEnd.length) push("warn","종결어미",`명사형 종결이 아닌 문장 ${badEnd.length}개 — ‘~함/~임/~음’ 형태 권장`, badEnd);
+  }
+
+  // 문장부호·띄어쓰기
+  if(opts.punct){
+    let m;
+    // 비표준 쉼표·마침표(전각 쉼표，·모점、·전각 마침표．·고리점。)
+    let bad=[]; const BAD=/[，、．。｡､]/g;
+    while((m=BAD.exec(t))) bad.push([m.index,m.index+1,"warn"]);
+    if(bad.length) push("warn","문장부호",`비표준 쉼표·마침표 ${bad.length}개(전각/모점/고리점) — 반각 ',' '.' 로 수정`, bad);
+    // 문장부호 중복(,, .. !! ?? 등)
+    let dup=[]; const DUP=/([,.!?，。])\1+/g;
+    while((m=DUP.exec(t))) dup.push([m.index,m.index+m[0].length,"warn"]);
+    if(dup.length) push("warn","문장부호",`문장부호 중복 ${dup.length}곳`, dup);
+    // 연속 공백 2칸 이상
+    let sp=[]; const MS=/ {2,}/g;
+    while((m=MS.exec(t))) sp.push([m.index,m.index+m[0].length,"warn"]);
+    if(sp.length) push("warn","띄어쓰기",`연속 공백 ${sp.length}곳 — 한 칸으로 수정`, sp);
+    // 쉼표·마침표 앞 공백
+    let bs=[]; const BEFORE=/[ \t]+[,.]/g;
+    while((m=BEFORE.exec(t))) bs.push([m.index,m.index+m[0].length,"warn"]);
+    if(bs.length) push("warn","띄어쓰기",`쉼표·마침표 앞 공백 ${bs.length}곳`, bs);
+    // 쉼표 뒤 공백 누락(숫자 사이 1,000 등은 제외)
+    let ns=[]; const AFTER=/,(?=[^\s\d)\]）】」』])/g;
+    while((m=AFTER.exec(t))) ns.push([m.index,m.index+1,"warn"]);
+    if(ns.length) push("warn","띄어쓰기",`쉼표 뒤 공백 누락 ${ns.length}곳`, ns);
+  }
+
+  const chars=[...t.replace(/\n/g,"")].length;   // 표시용 글자수(검증하지 않음)
+  return {issues, chars};
+}
+
+function findAll(text, term, cls){
+  const ranges=[]; if(!term) return ranges;
+  let i=0; const low=text, tl=term;
+  while(true){ const idx=low.indexOf(tl,i); if(idx<0)break; ranges.push([idx,idx+tl.length,cls]); i=idx+tl.length; }
+  return ranges;
+}
+
+// 따옴표(제목·행사명 등) 안의 . ! ? 는 문장 경계로 보지 않도록 중립화(길이 보존)
+function maskQuotes(t){
+  return t.replace(/[‘'“"「『《〈][^’'”"」』》〉]*[’'”"」』》〉]/g, m=>m.replace(/[.!?]/g,"·"));
+}
+// 따옴표 안(도서명·저자명 등 고유명사)을 공백으로 비움 — 한글원칙 검사에서 제외(길이 보존)
+function blankQuotes(t){
+  return t.replace(/[‘'“"「『《〈][^’'”"」』》〉]*[’'”"」』》〉]/g, m=>" ".repeat(m.length));
+}
+// 과학·수학 단위(2글자 이상; 한 글자 m·g·L·W 등은 이미 단일문자로 제외됨)
+const EN_UNITS=new Set(["cm","mm","km","nm","dm","kg","mg","mL","ml","dL","kL","cc","mol","Pa","kPa","hPa","atm","bar","kJ","cal","kcal","kW","MW","kV","mV","mA","Hz","kHz","MHz","GHz","dB","lm","lx","cd","ms","min","rpm","ppm","ppb","bpm","fps","dpi","px","ha","mmHg"]);
+function checkEndings(raw){
+  const t=maskQuotes(raw);
+  const bad=[];
+  // 문장 분리(마침표/물음표/느낌표 + 공백/끝), 위치 추적
+  const re=/[^.!?\n]+[.!?]?/g; let m;
+  while((m=re.exec(t))){
+    let seg=m[0]; const start=m.index;
+    const trimmed=seg.replace(/\s+$/,"");
+    if(!trimmed.trim())continue;
+    // 끝의 문장부호 제거
+    let core=trimmed.replace(/[.!?]+$/,"");
+    const last=[...core].pop(); if(!last)continue;
+    if(/다$/.test(core)){   // 했다/이다/한다 등 평서형
+      const e=start+trimmed.length;
+      bad.push([e-1,e,"warn"]);
+    }
+  }
+  return bad;
+}
+
+/* ---------------- 데이터 로딩 ---------------- */
+let RECORDS=[]; // {who, what, text}
+let RAWROWS=null, HEADERS=null;
+
+// 직접 입력창에 타이핑하면 엑셀 매핑 모드에서 벗어남
+document.getElementById("pasteArea").addEventListener("input",()=>{ document.getElementById("mapArea").style.display="none"; RAWROWS=null; });
+
+function loadPasteData(){
+  const lines=document.getElementById("pasteArea").value.split(/\r?\n/);
+  RECORDS=[]; let curPage=null, curStudent="";
+  for(const raw of lines){
+    const line=raw.replace(/\s+$/,""); const s=line.trim();
+    if(!s) continue;
+    const sm=s.match(/^〖(.+)〗$/);
+    if(sm){ curStudent=sm[1].trim(); curPage=null; continue; }   // 학생(파일) 표시
+    const pm=s.match(/^【(\d+)쪽】$/);
+    if(pm){ curPage=+pm[1]; continue; }               // 페이지 표시는 레코드가 아님
+    const cells=line.split("\t");
+    if(cells.length>=3) RECORDS.push({who:cells[0].trim(), what:cells[1].trim(), text:cells.slice(2).join(" ").trim(), page:curPage, student:curStudent, auto:false});
+    else if(cells.length===2) RECORDS.push({who:cells[0].trim(), what:"", text:cells[1].trim(), page:curPage, student:curStudent, auto:false});
+    else RECORDS.push({who:"", what:"", text:s, page:curPage, student:curStudent, auto:true});
+  }
+  document.getElementById("mapArea").style.display="none";
+  afterLoad();
+  return RECORDS.length;
+}
+
+// 파일 업로드
+const drop=document.getElementById("drop"), fileInput=document.getElementById("fileInput");
+drop.onclick=()=>fileInput.click();
+drop.ondragover=e=>{e.preventDefault();drop.classList.add("drag");};
+drop.ondragleave=()=>drop.classList.remove("drag");
+drop.ondrop=e=>{e.preventDefault();drop.classList.remove("drag");if(e.dataTransfer.files.length)processFiles(e.dataTransfer.files);};
+fileInput.onchange=e=>{if(e.target.files.length)processFiles(e.target.files);};
+
+// 업로드한 PDF들을 누적 보관 [{name, text, scanned, err}]
+let UPLOADED=[];
+
+// 여러 파일을 한 번에 처리 — 각 PDF를 학생으로 태깅하고, 기존 목록에 누적
+async function processFiles(fileList){
+  const files=[...fileList];
+  const st=document.getElementById("pdfStatus");
+  const pdfs=files.filter(f=>/\.pdf$/i.test(f.name));
+  const sheets=files.filter(f=>/\.(xlsx|xls|csv)$/i.test(f.name));
+  if(!pdfs.length && sheets.length){ readFile(sheets[0]); return; }   // 엑셀/CSV 단일(대체)
+  if(!pdfs.length){ st.style.display="block"; st.innerHTML="⚠ 지원하지 않는 파일입니다(PDF·엑셀·CSV)."; return; }
+  if(!window.pdfjsLib){ st.style.display="block"; st.innerHTML="⚠ PDF 라이브러리를 불러오지 못했습니다(인터넷 연결 확인)."; return; }
+  st.style.display="block";
+  const merge=document.getElementById("pdfMerge").checked;
+  let done=0;
+  for(const f of pdfs){
+    st.innerHTML=`⏳ PDF 처리 중… <b>${++done}/${pdfs.length}</b> — ${esc(f.name)}`;
+    await new Promise(r=>setTimeout(r));
+    const name=f.name.replace(/\.[^.]+$/,"").replace(/[〖〗【】]/g,"").trim() || ("파일"+(UPLOADED.length+1));
+    let item;
+    try{
+      const buf=await f.arrayBuffer();
+      const {text}=await extractPdfText(buf, merge);
+      const scanned=text.replace(/\s/g,"").length<10;
+      item={name, text:scanned?"":text, scanned};
+    }catch(e){ item={name, text:"", scanned:false, err:e.message}; }
+    const ex=UPLOADED.findIndex(u=>u.name===item.name);   // 같은 이름이면 교체
+    if(ex>=0) UPLOADED[ex]=item; else UPLOADED.push(item);
+  }
+  fileInput.value="";                 // 같은 파일을 다시 올릴 수 있도록 초기화
+  rebuildFromUploaded();
+  const okN=UPLOADED.filter(u=>u.text&&!u.scanned&&!u.err).length, scN=UPLOADED.filter(u=>u.scanned).length;
+  st.innerHTML=`✔ 누적 <b>${UPLOADED.length}개</b> 파일 (학생 ${okN}명${scN?`, 스캔 PDF ${scN}개 추출 실패`:""})`;
+}
+
+// 누적된 파일 목록으로 편집창을 재구성하고 다시 불러오기
+function rebuildFromUploaded(){
+  const combined=[];
+  UPLOADED.forEach(u=>{
+    combined.push(`〖${u.name}〗`);
+    combined.push(u.scanned?"(스캔 PDF로 보여 텍스트를 추출하지 못함)":(u.err?("(추출 오류: "+u.err+")"):u.text));
+  });
+  document.getElementById("pasteArea").value=combined.join("\n");
+  renderFileList();
+  const n=loadPasteData();
+  const note=document.getElementById("pasteNote");
+  if(UPLOADED.length){ note.style.display="block";
+    note.innerHTML=`✔ 파일 <b>${UPLOADED.length}개</b> 누적 · 총 <b>${n}건</b>. 파일을 더 올리면 누적되고, 파일 칩에 커서를 올리면 <b>×</b>로 삭제할 수 있습니다. 이제 <b>[점검 실행]</b>을 누르세요.`;
+  } else note.style.display="none";
+}
+
+// 업로드 파일 칩 목록(호버 시 × 삭제)
+function renderFileList(){
+  const box=document.getElementById("fileList");
+  if(!UPLOADED.length){ box.style.display="none"; box.innerHTML=""; return; }
+  box.style.display="flex";
+  box.innerHTML=UPLOADED.map((u,i)=>`<span class="filechip${(u.scanned||u.err)?' bad':''}"><span class="doc">📄</span>${esc(u.name)}${u.scanned?' <span class="sub">스캔</span>':(u.err?' <span class="sub">오류</span>':'')}<span class="rm" data-idx="${i}" title="삭제">×</span></span>`).join("");
+  box.querySelectorAll(".rm").forEach(x=>x.onclick=e=>{ e.stopPropagation(); removeFile(+x.dataset.idx); });
+}
+function removeFile(i){
+  UPLOADED.splice(i,1);
+  if(UPLOADED.length){ rebuildFromUploaded(); }
+  else { document.getElementById("pasteArea").value=""; RECORDS=[]; renderFileList();
+    document.getElementById("pasteNote").style.display="none";
+    document.getElementById("pdfStatus").innerHTML="파일이 모두 제거되었습니다."; afterLoad(); }
+}
+
+// pdf.js 워커 설정
+if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; }
+
+async function extractPdfText(buf, merge){
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const allLines=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const tc=await page.getTextContent();
+    const lines={};
+    tc.items.forEach(it=>{
+      if(!it.str) return;
+      const y=Math.round(it.transform[5]/2)*2;       // y좌표(2px 단위)로 같은 줄 묶기
+      (lines[y]=lines[y]||[]).push({x:it.transform[4], s:it.str});
+    });
+    const ys=Object.keys(lines).map(Number).sort((a,b)=>b-a);   // 위→아래
+    allLines.push(`【${p}쪽】`);   // 페이지 시작 표시(레코드 아님, 위치 표기용)
+    ys.forEach(y=>{
+      const line=lines[y].sort((a,b)=>a.x-b.x).map(o=>o.s).join("").replace(/\s+/g," ").trim();
+      if(line) allLines.push(line);
+    });
+  }
+  const finalLines = merge ? mergeWrapped(allLines) : allLines;
+  return {text:finalLines.join("\n"), pages:pdf.numPages};
+}
+
+function readFile(file){        // 엑셀/CSV 처리(PDF는 processFiles가 전담)
+  const reader=new FileReader();
+  const st=document.getElementById("pdfStatus");
+  reader.onload=ev=>{
+    const wb=XLSX.read(ev.target.result,{type:"array"});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""}).filter(r=>r.some(c=>String(c).trim()!==""));
+    if(rows.length<2){alert("데이터가 부족합니다. 첫 행은 열 이름, 이후 행은 데이터여야 합니다.");return;}
+    HEADERS=rows[0].map((h,i)=>String(h).trim()||("열"+(i+1)));
+    RAWROWS=rows.slice(1);
+    buildMapping();
+    if(st) st.style.display="none";
+    drop.querySelector("div").textContent="✔ "+file.name+" (총 "+RAWROWS.length+"행)";
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function buildMapping(){
+  const mk=sel=>{sel.innerHTML="";HEADERS.forEach((h,i)=>{const o=document.createElement("option");o.value=i;o.textContent=h;sel.appendChild(o);});};
+  const w=document.getElementById("colWho"),wt=document.getElementById("colWhat"),tx=document.getElementById("colText");
+  [w,wt,tx].forEach(mk);
+  // 추정
+  const guess=(kw)=>HEADERS.findIndex(h=>kw.some(k=>h.includes(k)));
+  const gi=guess(["이름","성명","학생","학번","번호"]); if(gi>=0)w.value=gi;
+  const gw=guess(["과목","항목","영역","교과"]); if(gw>=0)wt.value=gw;
+  const gt=guess(["내용","특기","세특","특기사항","기재","텍스트"]); tx.value=gt>=0?gt:HEADERS.length-1;
+  const none=document.createElement("option");none.value=-1;none.textContent="(없음)";
+  document.getElementById("colWhat").appendChild(none.cloneNode(true));
+  const none2=none.cloneNode(true);document.getElementById("colWho").appendChild(none2);
+  document.getElementById("mapArea").style.display="block";
+  const upd=()=>{
+    RECORDS=RAWROWS.map((r,i)=>({
+      who: w.value==-1?("행 "+(i+1)):String(r[w.value]||"").trim()||("행 "+(i+1)),
+      what: wt.value==-1?"":String(r[wt.value]||"").trim(),
+      text:String(r[tx.value]||"").trim(), page:null, student:"", auto:false
+    }));
+    document.getElementById("rowCount").textContent="점검 대상 "+RECORDS.length+"건 준비됨";
+    afterLoad();
+  };
+  [w,wt,tx].forEach(s=>s.onchange=upd);
+  upd();
+}
+
+function afterLoad(){
+  const n=RECORDS.length;
+  const s=document.getElementById("loadStatus");
+  if(s) s.innerHTML = n? ("✔ 점검 대상 <b>"+n+"</b>건 준비됨 — [점검 실행]을 누르세요"):"";
+  const rc=document.getElementById("rowCount"); if(rc && n) rc.textContent="점검 대상 "+n+"건 준비됨";
+}
+
+/* ---------------- 실행 ---------------- */
+let LASTRESULTS=[];
+document.getElementById("runBtn").onclick=async ()=>{
+  // 붙여넣기 탭이 활성이면 현재 텍스트에서 자동 불러오기(편집 내용까지 반영). 파일 탭은 매핑된 데이터 사용.
+  // 엑셀 매핑 모드가 아니면 편집창에서 자동 불러오기(편집 내용 반영)
+  const excelMode=document.getElementById("mapArea").style.display!=="none";
+  if(!excelMode && document.getElementById("pasteArea").value.trim()){ loadPasteData(); }
+  if(RECORDS.length===0){
+    alert("먼저 1단계에서 점검할 내용을 넣어주세요.\n\n· 파일 올리기: PDF·엑셀·CSV\n· 또는 편집창에 직접 붙여넣기\n그리고 [점검 실행]을 누르세요.");
+    return;
+  }
+  const opts={
+    ban:cBan.checked, form:cForm.checked, punct:cPunct.checked, edu:cEdu.checked, blind:cBlind.checked, dup:cDup.checked, neis:cNeis.checked,
+    blindTerms:document.getElementById("blindTerms").value.split(",").map(x=>x.trim()).filter(Boolean),
+    allowEng:document.getElementById("allowEng").value.split(",").map(x=>x.trim()).filter(Boolean)
+  };
+  opts.allowSet=new Set(opts.allowEng.map(x=>x.toUpperCase()));   // 한글원칙 허용 목록(1회 생성)
+
+  // 영역(섹션)·과목 태깅 + 나이스 머리글·바닥글·양식 제외
+  let recs=[], removed=0, section=null, curSubject="", lastStudent=null;
+  for(const r of RECORDS){
+    if(r.student!==lastStudent){ section=null; curSubject=""; lastStudent=r.student; }   // 학생 바뀌면 맥락 초기화
+    const key=detectSectionKey(r.text);
+    if(key){ section=key; curSubject=""; }               // 영역 제목을 만나면 맥락 갱신(과목 초기화)
+    if(section==="subject"){
+      if(isSubjectMarker(r.text)){ curSubject=r.text.trim().replace(/[()（）]/g,""); removed++; continue; }  // 과목 마커 → 기록 후 제외
+      const inl=subjectFromText(r.text); if(inl) curSubject=inl;   // 세특이 과목명으로 시작하면 갱신
+    }
+    if(opts.neis && isNeisBoilerplate(r.text)){ removed++; continue; }   // 제목·머리글·바닥글 제외
+    if(SKIP_SECTIONS.has(section)){ removed++; continue; }               // 인적·학적/출결/수상경력/자격증은 점검 제외(사람 확인)
+    recs.push({rec:r, section, subject:(section==="subject"?curSubject:"")});
+  }
+
+  const btn=document.getElementById("runBtn"), stat=document.getElementById("loadStatus");
+  btn.disabled=true;
+  const res=[]; const CH=50, N=recs.length;
+  for(let i=0;i<N;i+=CH){
+    const end=Math.min(i+CH,N);
+    for(let j=i;j<end;j++){ res.push({rec:recs[j].rec, section:recs[j].section, subject:recs[j].subject, ...analyze(recs[j].rec.text,opts,recs[j].section,recs[j].rec.what||recs[j].subject)}); }
+    if(N>CH){ stat.innerHTML=`⏳ 점검 중… <b>${end}/${N}</b>`; await new Promise(r=>setTimeout(r)); }
+  }
+  if(opts.dup) markDuplicates(res);
+  LASTRESULTS=res;
+  render(res);
+  btn.disabled=false;
+  stat.innerHTML=`✔ 점검 완료 — <b>${N}</b>건`+(removed?` <span class="sub">(양식·비점검영역 ${removed}줄 제외: 인적·학적/출결/수상경력/자격증 포함)</span>`:"");
+};
+
+let DUP_GROUPS=[];
+function markDuplicates(res){
+  DUP_GROUPS=[];
+  const norm=s=>s.replace(/\s+/g,"").replace(/[.,·]/g,"");
+  const isNarr=s=>/[.!?]["'”’)\]]?\s*$/.test((s||"").trim());   // 마침표로 끝나는 실제 서술만
+  const map={};
+  res.forEach((r,i)=>{
+    if(!isNarr(r.rec.text)) return;               // 표·구조·정량 줄은 중복 검사 대상 아님
+    const k=norm(r.rec.text); if(k.length<25) return;
+    (map[k]=map[k]||[]).push(i);
+  });
+  Object.values(map).forEach(arr=>{
+    if(arr.length>1){
+      DUP_GROUPS.push(arr.slice());
+      arr.forEach(i=>{
+        const others=arr.filter(x=>x!==i).map(x=>res[x].rec.student||res[x].rec.who||"다른 항목").join(", ");
+        res[i].issues.unshift({sev:"err",type:"중복",msg:`다른 항목과 내용 동일 — 복사 의심 (동일: ${others})`,ranges:[]});
+      });
+    }
+  });
+}
+
+/* ---------------- 렌더링 ---------------- */
+function highlight(text, issues){
+  // 모든 range 수집
+  let marks=[];
+  issues.forEach(is=>is.ranges&&is.ranges.forEach(([s,e,cls])=>marks.push([s,e,cls])));
+  if(!marks.length) return esc(text);
+  marks.sort((a,b)=>a[0]-b[0]||b[1]-a[1]);
+  // 겹침 병합(우선순위: err>blind>warn>info)
+  const prio={err:4,blind:3,warn:2,info:1};
+  let out="",pos=0;
+  // 단순 처리: 겹치면 앞선 것 유지
+  const filtered=[];let lastEnd=-1;
+  for(const mk of marks){ if(mk[0]>=lastEnd){filtered.push(mk);lastEnd=mk[1];} else if(mk[1]>lastEnd){/*연장*/} }
+  for(const [s,e,cls] of filtered){
+    if(s<pos)continue;
+    out+=esc(text.slice(pos,s));
+    out+=`<mark class="${cls}">`+esc(text.slice(s,e))+"</mark>";
+    pos=e;
+  }
+  out+=esc(text.slice(pos));
+  return out;
+}
+
+const SECTION_KO={award:"수상경력",cert:"자격증·인증",personal:"인적·학적사항",attendance:"출결상황",subject:"교과학습발달상황(세특)",reading:"독서활동상황",behavior:"행동특성 및 종합의견",creative:"창의적 체험활동"};
+function subjPrefix(text){ const m=(text||"").match(/^\s*([가-힣A-Za-z0-9·\/ ]{1,20}?)\s*[:：]\s/); return m?m[1].trim():""; }
+// 결과 라벨: 이름(엑셀/TSV)이 있으면 이름·과목, 없으면 "N쪽 · 영역/과목"
+function recLabel(r, idx){
+  if(!r.rec.auto) return (r.rec.student?r.rec.student+" · ":"")+(r.rec.who||("항목 "+(idx+1)))+(r.rec.what?" · "+r.rec.what:"");
+  const parts=[];
+  if(r.rec.student) parts.push(r.rec.student);
+  if(r.rec.page) parts.push(r.rec.page+"쪽");
+  // 세특이면 영역명(세특)과 과목을 함께: "교과학습발달상황(세특) · 통합사회"
+  if(r.section==="subject"){
+    parts.push("세특"+(r.subject?" · "+r.subject:""));
+  }else{
+    const p = subjPrefix(r.rec.text) || r.subject || SECTION_KO[r.section] || "";
+    if(p) parts.push(p);
+  }
+  return parts.length? parts.join(" · ") : ("항목 "+(idx+1));
+}
+function render(res){
+  document.getElementById("resultPanel").style.display="block";
+  let nErr=0,nWarn=0,nClean=0,totIssue=0;
+  res.forEach(r=>{
+    const hasErr=r.issues.some(i=>i.sev==="err");
+    const hasWarn=r.issues.some(i=>i.sev==="warn"||i.sev==="info");
+    if(hasErr)nErr++; else if(hasWarn)nWarn++; else nClean++;
+    totIssue+=r.issues.length;
+  });
+  document.getElementById("summary").innerHTML=`
+    <div class="stat"><b>${res.length}</b>점검 항목</div>
+    <div class="stat" style="border-color:#f3c1ba"><b style="color:var(--err)">${nErr}</b>오류 포함</div>
+    <div class="stat" style="border-color:#f0d9a8"><b style="color:var(--warn)">${nWarn}</b>주의만</div>
+    <div class="stat" style="border-color:#bfe6cd"><b style="color:var(--ok)">${nClean}</b>이상 없음</div>
+    <div class="stat"><b>${totIssue}</b>총 지적</div>`;
+
+  // 학생별 요약(파일 여러 개일 때) — 문제 많은 학생부터
+  const stuMap=new Map();
+  res.forEach(r=>{ const s=r.rec.student||""; if(!s)return;
+    const o=stuMap.get(s)||{stu:s,total:0,err:0,warn:0}; o.total++;
+    if(r.issues.some(i=>i.sev==="err"))o.err++; else if(r.issues.length)o.warn++;
+    stuMap.set(s,o); });
+  const sumBox=document.getElementById("studentSummary");
+  if(stuMap.size>1){
+    const arr=[...stuMap.values()].sort((a,b)=>b.err-a.err||b.warn-a.warn||a.stu.localeCompare(b.stu));
+    const withErr=arr.filter(x=>x.err).length, withWarn=arr.filter(x=>!x.err&&x.warn).length;
+    sumBox.innerHTML=`<div style="font-weight:600;margin-bottom:6px">학생별 요약 · 총 ${arr.length}명 `+
+      `<span class="chip err">오류 ${withErr}명</span> <span class="chip warn">주의 ${withWarn}명</span> `+
+      `<span class="chip ok">이상 없음 ${arr.length-withErr-withWarn}명</span></div>`+
+      `<div style="max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px">`+
+      `<table><thead><tr><th>학생</th><th>항목</th><th>오류</th><th>주의</th><th></th></tr></thead><tbody>`+
+      arr.map(x=>`<tr class="stuRow" data-stu="${esc(x.stu)}" style="cursor:pointer">`+
+        `<td><b>${esc(x.stu)}</b></td><td>${x.total}</td>`+
+        `<td>${x.err?`<span style="color:var(--err);font-weight:600">${x.err}</span>`:"0"}</td>`+
+        `<td>${x.warn?`<span style="color:var(--warn);font-weight:600">${x.warn}</span>`:"0"}</td>`+
+        `<td class="sub">보기 ▸</td></tr>`).join("")+
+      `</tbody></table></div>`;
+    sumBox.querySelectorAll(".stuRow").forEach(tr=>tr.onclick=()=>{ STUDENT_FILTER = (STUDENT_FILTER===tr.dataset.stu)?null:tr.dataset.stu; applyFilter(); });
+  } else { sumBox.innerHTML=""; STUDENT_FILTER=null; }
+
+  // 복사(중복) 의심 그룹 — 같은 내용을 공유한 학생 명단
+  const dupBox=document.getElementById("dupSummary");
+  if(DUP_GROUPS.length){
+    dupBox.style.display="block";
+    dupBox.innerHTML=`<div class="dhead">⚠ 복사(중복) 의심 · ${DUP_GROUPS.length}건 <span class="sub" style="font-weight:500">— 동일 내용을 공유한 학생/항목</span></div>`+
+      DUP_GROUPS.map(g=>{
+        const raw=res[g[0]].rec.text||""; const snip=esc(raw.slice(0,70))+(raw.length>70?"…":"");
+        const mems=g.map(i=>`<span class="dupmem" data-stu="${esc(res[i].rec.student||"")}">${esc(recLabel(res[i],i))}</span>`).join("");
+        return `<div class="dupgroup"><div class="dupsnip">“${snip}” <span class="sub">· ${g.length}명</span></div><div class="dupmembers">${mems}</div></div>`;
+      }).join("");
+    dupBox.querySelectorAll(".dupmem").forEach(m=>m.onclick=()=>{ if(m.dataset.stu){ STUDENT_FILTER=m.dataset.stu; applyFilter(); document.getElementById("results").scrollIntoView({behavior:"smooth",block:"start"}); } });
+  } else dupBox.style.display="none";
+
+  const box=document.getElementById("results");box.innerHTML="";
+  const frag=document.createDocumentFragment();
+  const autoOpen = res.length<=30;   // 항목이 적을 때만 오류 항목 자동 펼침(대용량 성능 보호)
+  res.forEach((r,idx)=>{
+    const errs=r.issues.filter(i=>i.sev==="err"),warns=r.issues.filter(i=>i.sev!=="err");
+    const clean=r.issues.length===0;
+    const div=document.createElement("div");div.className="rec"+(clean?" clean":"");
+    div.dataset.clean=clean?"1":"0";
+    div.dataset.student=r.rec.student||"";
+    const chips=[];
+    if(errs.length)chips.push(`<span class="chip err">오류 ${errs.length}</span>`);
+    if(warns.length)chips.push(`<span class="chip warn">주의 ${warns.length}</span>`);
+    if(clean)chips.push(`<span class="chip ok">이상 없음</span>`);
+    const head=document.createElement("div");head.className="rec-head";
+    head.innerHTML=`<div><span class="arrow">▶</span> <span class="who">${esc(recLabel(r,idx))}</span></div>`+
+      `<div class="chips">${chips.join("")} <span class="sub">${r.chars}자</span></div>`;
+    const body=document.createElement("div");body.className="rec-body";
+    div.appendChild(head);div.appendChild(body);
+    // 본문은 처음 펼칠 때 1회만 생성(지연 렌더링)
+    div._build=()=>{ if(div._built)return; div._built=1;
+      body.innerHTML=`<div class="txtbox">${highlight(r.rec.text,r.issues)||"<span class='sub'>(내용 없음)</span>"}</div>`+
+        (r.issues.length? r.issues.map(is=>`<div class="issue"><div class="tag ${is.sev}">${is.sev==="err"?"● 오류":is.sev==="warn"?"▲ 주의":"· 확인"} ${esc(is.type)}</div><div>${is.msg}</div></div>`).join("")
+         : `<div class="sub">지적 사항 없음. (성취기준 근거·과장 여부 등은 교사 확인 필요)</div>`);
+    };
+    head.onclick=()=>{ div._build(); div.classList.toggle("open"); };
+    if(autoOpen && errs.length){ div._build(); div.classList.add("open"); }
+    frag.appendChild(div);
+  });
+  box.appendChild(frag);
+  applyFilter();
+}
+
+document.getElementById("expandAll").onclick=()=>document.querySelectorAll(".rec").forEach(r=>{ if(r._build)r._build(); r.classList.add("open"); });
+document.getElementById("collapseAll").onclick=()=>document.querySelectorAll(".rec").forEach(r=>r.classList.remove("open"));
+document.getElementById("onlyIssues").onchange=applyFilter;
+let STUDENT_FILTER=null;
+function applyFilter(){
+  const only=document.getElementById("onlyIssues").checked;
+  document.querySelectorAll(".rec").forEach(r=>{
+    const hideClean = only && r.dataset.clean==="1";
+    const hideStu = STUDENT_FILTER && r.dataset.student!==STUDENT_FILTER;
+    r.style.display = (hideClean||hideStu)?"none":"";
+  });
+  const info=document.getElementById("studentFilterInfo");
+  if(info) info.innerHTML = STUDENT_FILTER? `▸ <b>${esc(STUDENT_FILTER)}</b>만 표시 중 <a href="#" onclick="STUDENT_FILTER=null;applyFilter();return false;" style="color:var(--brand)">전체 보기</a>` : "";
+  // 학생 요약표에서 선택 행 강조
+  document.querySelectorAll(".stuRow").forEach(tr=>tr.style.background = (tr.dataset.stu===STUDENT_FILTER)?"var(--brand-weak)":"");
+}
+
+document.getElementById("downloadCsv").onclick=()=>{
+  // 현재 화면 필터(문제만 보기 / 학생 필터)와 동일하게 내보냄
+  const only=document.getElementById("onlyIssues").checked;
+  const target=LASTRESULTS.filter(r=>{
+    if(only && r.issues.length===0) return false;
+    if(STUDENT_FILTER && (r.rec.student||"")!==STUDENT_FILTER) return false;
+    return true;
+  });
+  const rows=[["학생","쪽","영역·과목","글자수","오류수","주의수","지적내용"]];
+  target.forEach(r=>{
+    const errs=r.issues.filter(i=>i.sev==="err").length;
+    const warns=r.issues.length-errs;
+    const detail=r.issues.map(i=>`[${i.sev==="err"?"오류":i.sev==="warn"?"주의":"확인"}]${i.type}:${i.msg.replace(/<[^>]+>/g,"")}`).join(" / ");
+    const part = r.rec.auto ? (r.section==="subject" ? ("세특"+(r.subject?" · "+r.subject:"")) : (subjPrefix(r.rec.text)||r.subject||SECTION_KO[r.section]||"")) : (r.rec.what||"");
+    const stu = r.rec.student || r.rec.who || "";
+    rows.push([stu, r.rec.page||"", part, r.chars, errs, warns, detail]);
+  });
+  if(target.length===0){ alert("내보낼 항목이 없습니다."); return; }
+  const csv="﻿"+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\r\n");
+  const blob=new Blob([csv],{type:"text/csv"});const a=document.createElement("a");
+  const suffix=(only?"_문제만":"")+(STUDENT_FILTER?"_"+STUDENT_FILTER.replace(/[\\/:*?"<>|]/g,""):"");
+  a.href=URL.createObjectURL(blob);a.download="생기부_점검결과"+suffix+".csv";a.click();
+};
+</script>
+</body>
+</html>
