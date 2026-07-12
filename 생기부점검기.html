@@ -310,7 +310,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     <div class="filedrop" id="drop">
       <div class="drop-title"><span class="up">↑</span>PDF · 엑셀 · CSV 올리기 <span class="sub" style="font-weight:500">(끌어놓거나 클릭)</span></div>
       <div class="hint" style="margin-top:6px">학생별 생기부 PDF를 <b>한 번에 여러 개</b> 올릴 수 있습니다. 파일명이 학생 이름이 됩니다. 엑셀·CSV는 첫 행을 열 이름으로 인식합니다.</div>
-      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.pdf" multiple style="display:none">
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.cell,.pdf" multiple style="display:none">
     </div>
     <label class="switch" style="margin-top:10px"><input type="checkbox" id="pdfMerge" checked> PDF에서 줄바꿈으로 접힌 문장 자동 잇기(권장)</label>
     <div id="fileList" class="filelist" style="display:none"></div>
@@ -341,6 +341,9 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
         <label>고교 블라인드 – 학교 식별 표현 (쉼표로 구분, 발견 시 오류 표시)</label>
         <input type="text" id="blindTerms" placeholder="예) 동탄중앙고, 동탄중앙고등학교, 동탄중앙, 재단명, 축제명">
       </div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label class="switch" style="font-weight:600"><input type="checkbox" id="cMask" checked> 🔒 개인정보 마스킹 — 이름(홍○○)·주민등록번호·연락처·이메일을 화면·저장에서 가림</label>
     </div>
     <div class="row" style="margin-top:6px">
       <label class="switch"><input type="checkbox" id="cBan" checked> 금지어·대체어</label>
@@ -870,9 +873,9 @@ async function processFiles(fileList){
   const files=[...fileList];
   const st=document.getElementById("pdfStatus");
   const pdfs=files.filter(f=>/\.pdf$/i.test(f.name));
-  const sheets=files.filter(f=>/\.(xlsx|xls|csv)$/i.test(f.name));
-  if(!pdfs.length && sheets.length){ readFile(sheets[0]); return; }   // 엑셀/CSV 단일(대체)
-  if(!pdfs.length){ st.style.display="block"; st.innerHTML="⚠ 지원하지 않는 파일입니다(PDF·엑셀·CSV)."; return; }
+  const sheets=files.filter(f=>/\.(xlsx|xls|csv|cell)$/i.test(f.name));
+  if(!pdfs.length && sheets.length){ readFile(sheets[0]); return; }   // 엑셀/CSV/한셀 단일(대체)
+  if(!pdfs.length){ st.style.display="block"; st.innerHTML="⚠ 지원하지 않는 파일입니다(PDF·엑셀·CSV·한셀)."; return; }
   if(!window.pdfjsLib){ st.style.display="block"; st.innerHTML="⚠ PDF 라이브러리를 불러오지 못했습니다(인터넷 연결 확인)."; return; }
   st.style.display="block";
   const merge=document.getElementById("pdfMerge").checked;
@@ -918,7 +921,7 @@ function renderFileList(){
   const box=document.getElementById("fileList");
   if(!UPLOADED.length){ box.style.display="none"; box.innerHTML=""; return; }
   box.style.display="flex";
-  box.innerHTML=UPLOADED.map((u,i)=>`<span class="filechip${(u.scanned||u.err)?' bad':''}"><span class="doc">📄</span>${esc(u.name)}${u.scanned?' <span class="sub">스캔</span>':(u.err?' <span class="sub">오류</span>':'')}<span class="rm" data-idx="${i}" title="삭제">×</span></span>`).join("");
+  box.innerHTML=UPLOADED.map((u,i)=>`<span class="filechip${(u.scanned||u.err)?' bad':''}"><span class="doc">📄</span>${esc(maskName(u.name))}${u.scanned?' <span class="sub">스캔</span>':(u.err?' <span class="sub">오류</span>':'')}<span class="rm" data-idx="${i}" title="삭제">×</span></span>`).join("");
   box.querySelectorAll(".rm").forEach(x=>x.onclick=e=>{ e.stopPropagation(); removeFile(+x.dataset.idx); });
 }
 function removeFile(i){
@@ -961,11 +964,20 @@ async function extractPdfText(buf, merge){
   return {text:finalLines.join("\n"), pages:pdf.numPages};
 }
 
-function readFile(file){        // 엑셀/CSV 처리(PDF는 processFiles가 전담)
+function readFile(file){        // 엑셀/CSV/한셀 처리(PDF는 processFiles가 전담)
   const reader=new FileReader();
   const st=document.getElementById("pdfStatus");
+  const isCell=/\.cell$/i.test(file.name);
   reader.onload=ev=>{
-    const wb=XLSX.read(ev.target.result,{type:"array"});
+    let wb;
+    try{ wb=XLSX.read(ev.target.result,{type:"array"}); }
+    catch(e){
+      if(st){ st.style.display="block";
+        st.innerHTML = isCell
+          ? "⚠ 한셀(.cell) 파일을 바로 읽지 못했습니다. 한셀에서 <b>다른 이름으로 저장 → Excel 통합 문서(*.xlsx)</b> 로 저장한 뒤 올려주세요."
+          : "⚠ 파일을 읽지 못했습니다(형식 확인). xlsx·csv로 저장해 다시 시도해 주세요."; }
+      return;
+    }
     const ws=wb.Sheets[wb.SheetNames[0]];
     const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""}).filter(r=>r.some(c=>String(c).trim()!==""));
     if(rows.length<2){alert("데이터가 부족합니다. 첫 행은 열 이름, 이후 행은 데이터여야 합니다.");return;}
@@ -1082,7 +1094,21 @@ function markDuplicates(res){
 }
 
 /* ---------------- 렌더링 ---------------- */
+/* ---------------- 개인정보 마스킹 ---------------- */
+let MASK=true;   // render() 시 체크박스에서 갱신
+// 이름: 앞 한글 이름(2~4자)만 첫 글자 남기고 ○ 처리 (박경빈 → 박○○, 박경빈_생기부 → 박○○_생기부)
+function maskName(s){ if(!MASK||!s) return s; return s.replace(/[가-힣]{2,4}/, m=>m[0]+"○".repeat(m.length-1)); }
+// 본문의 명확한 개인정보만 가림. 길이 보존(하이라이트 위치 안 깨짐)
+function maskPII(t){
+  if(!MASK||!t) return t;
+  return t
+    .replace(/(\d{6})([-\s]?)([1-4]\d{6})/g,(m,a,sep,b)=>a+sep+"*".repeat(b.length))                               // 주민등록번호 뒷자리
+    .replace(/(01[016789])([-\s]?)(\d{3,4})([-\s]?)(\d{4})/g,(m,a,s1,b,s2,c)=>a+s1+"*".repeat(b.length)+s2+"*".repeat(c.length))  // 휴대전화
+    .replace(/([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g,(m,a,b)=>"*".repeat(a.length)+"@"+"*".repeat(b.length));       // 이메일
+}
+
 function highlight(text, issues){
+  text=maskPII(text);   // 표시용 마스킹(위치 보존이라 range 그대로 유효)
   // 모든 range 수집 (이슈 인덱스 k를 함께 실어 원문 mark ↔ 이슈 카드 연동)
   let marks=[];
   issues.forEach((is,k)=>is.ranges&&is.ranges.forEach(([s,e,cls])=>marks.push([s,e,cls,k])));
@@ -1106,9 +1132,9 @@ const SECTION_KO={award:"수상경력",cert:"자격증·인증",personal:"인적
 function subjPrefix(text){ const m=(text||"").match(/^\s*([가-힣A-Za-z0-9·\/ ]{1,20}?)\s*[:：]\s/); return m?m[1].trim():""; }
 // 결과 라벨: 이름(엑셀/TSV)이 있으면 이름·과목, 없으면 "N쪽 · 영역/과목"
 function recLabel(r, idx){
-  if(!r.rec.auto) return (r.rec.student?r.rec.student+" · ":"")+(r.rec.who||("항목 "+(idx+1)))+(r.rec.what?" · "+r.rec.what:"");
+  if(!r.rec.auto) return (r.rec.student?maskName(r.rec.student)+" · ":"")+(maskName(r.rec.who)||("항목 "+(idx+1)))+(r.rec.what?" · "+r.rec.what:"");
   const parts=[];
-  if(r.rec.student) parts.push(r.rec.student);
+  if(r.rec.student) parts.push(maskName(r.rec.student));
   if(r.rec.page) parts.push(r.rec.page+"쪽");
   // 세특이면 영역명(세특)과 과목을 함께: "교과학습발달상황(세특) · 통합사회"
   if(r.section==="subject"){
@@ -1120,6 +1146,7 @@ function recLabel(r, idx){
   return parts.length? parts.join(" · ") : ("항목 "+(idx+1));
 }
 function render(res){
+  MASK=document.getElementById("cMask").checked;   // 개인정보 마스킹 상태 반영
   document.getElementById("resultPanel").style.display="block";
   let nErr=0,nWarn=0,nClean=0,totIssue=0;
   res.forEach(r=>{
@@ -1165,7 +1192,7 @@ function render(res){
       `<div style="max-height:230px;overflow:auto;border:1px solid var(--line);border-radius:8px">`+
       `<table><thead><tr><th>학생</th><th>항목</th><th>오류</th><th>주의</th><th></th></tr></thead><tbody>`+
       arr.map(x=>`<tr class="stuRow" data-stu="${esc(x.stu)}" style="cursor:pointer">`+
-        `<td><b>${esc(x.stu)}</b></td><td>${x.total}</td>`+
+        `<td><b>${esc(maskName(x.stu))}</b></td><td>${x.total}</td>`+
         `<td>${x.err?`<span style="color:var(--err);font-weight:600">${x.err}</span>`:"0"}</td>`+
         `<td>${x.warn?`<span style="color:var(--warn);font-weight:600">${x.warn}</span>`:"0"}</td>`+
         `<td class="sub">보기 ▸</td></tr>`).join("")+
@@ -1179,7 +1206,7 @@ function render(res){
     dupBox.style.display="block";
     dupBox.innerHTML=`<div class="dhead">⚠ 복사(중복) 의심 · ${DUP_GROUPS.length}건 <span class="sub" style="font-weight:500">— 동일 내용을 공유한 학생/항목</span></div>`+
       DUP_GROUPS.map(g=>{
-        const raw=res[g[0]].rec.text||""; const snip=esc(raw.slice(0,70))+(raw.length>70?"…":"");
+        const raw=res[g[0]].rec.text||""; const snip=esc(maskPII(raw.slice(0,70)))+(raw.length>70?"…":"");
         const mems=g.map(i=>`<span class="dupmem" data-stu="${esc(res[i].rec.student||"")}">${esc(recLabel(res[i],i))}</span>`).join("");
         return `<div class="dupgroup"><div class="dupsnip">“${snip}” <span class="sub">· ${g.length}명</span></div><div class="dupmembers">${mems}</div></div>`;
       }).join("");
@@ -1240,7 +1267,7 @@ function render(res){
         const showPolish=(title,cleaned,note)=>{
           outBox.style.display="block";
           outBox.innerHTML=`<div class="polish-head">${title}${note?` <span class="sub">· ${esc(note)}</span>`:""}</div>`+
-            `<div class="polish-text">${esc(cleaned)}</div>`+
+            `<div class="polish-text">${esc(maskPII(cleaned))}</div>`+
             `<div class="polish-actions"><button class="btn sec pcopy">📋 복사</button></div>`;
           outBox.querySelector(".pcopy").onclick=async e=>{
             try{ await navigator.clipboard.writeText(cleaned); e.target.textContent="✔ 복사됨"; setTimeout(()=>e.target.textContent="📋 복사",1400); }
@@ -1325,8 +1352,15 @@ function applyFilter(){
 })();
 // 브라우저 내장 AI 감지(있으면 각 항목에 'AI 윤문' 버튼 노출)
 initAI();
+// 개인정보 마스킹 토글 — 즉시 반영(파일 칩 + 결과 다시 그리기)
+document.getElementById("cMask").onchange=()=>{
+  MASK=document.getElementById("cMask").checked;
+  renderFileList();
+  if(LASTRESULTS && LASTRESULTS.length) render(LASTRESULTS);
+};
 
 document.getElementById("downloadCsv").onclick=()=>{
+  MASK=document.getElementById("cMask").checked;
   // 현재 화면 필터(심각도·유형·학생)와 동일하게 내보냄
   const type=document.getElementById("typeFilter").value;
   const q=(document.getElementById("studentSearch").value||"").trim().toLowerCase();
@@ -1345,7 +1379,7 @@ document.getElementById("downloadCsv").onclick=()=>{
     const warns=r.issues.length-errs;
     const detail=r.issues.map(i=>`[${i.sev==="err"?"오류":i.sev==="warn"?"주의":"확인"}]${i.type}:${i.msg.replace(/<[^>]+>/g,"")}`).join(" / ");
     const part = r.rec.auto ? (r.section==="subject" ? ("세특"+(r.subject?" · "+r.subject:"")) : (subjPrefix(r.rec.text)||r.subject||SECTION_KO[r.section]||"")) : (r.rec.what||"");
-    const stu = r.rec.student || r.rec.who || "";
+    const stu = maskName(r.rec.student || r.rec.who || "");   // 저장 파일에도 개인정보 마스킹 적용
     rows.push([stu, r.rec.page||"", part, r.chars, errs, warns, detail]);
   });
   if(target.length===0){ alert("내보낼 항목이 없습니다."); return; }
