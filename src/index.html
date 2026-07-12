@@ -239,7 +239,7 @@
 
     <div class="filedrop" id="drop">
       <div class="drop-title"><span class="up">↑</span>PDF · 엑셀 · CSV 올리기 <span class="sub" style="font-weight:500">(끌어놓거나 클릭)</span></div>
-      <div class="hint" style="margin-top:6px">학생별 생기부 PDF를 <b>한 번에 여러 개</b> 올릴 수 있습니다. 파일명이 학생 이름이 됩니다. 엑셀·CSV는 첫 행을 열 이름으로 인식합니다.</div>
+      <div class="hint" style="margin-top:6px">PDF·엑셀·CSV·한셀 모두 <b>한 번에 여러 개</b> 올릴 수 있습니다. PDF는 파일명이 학생 이름이 되고, 표 파일(엑셀·CSV·한셀)은 <b>같은 형식이면 여러 개가 자동 병합</b>됩니다(첫 행=열 이름). <span class="sub">※ PDF와 표 파일은 종류를 섞지 말고 따로 올려주세요.</span></div>
       <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.cell,.pdf" multiple style="display:none">
     </div>
     <label class="switch" style="margin-top:10px"><input type="checkbox" id="pdfMerge" checked> PDF에서 줄바꿈으로 접힌 문장 자동 잇기(권장)</label>
@@ -804,7 +804,7 @@ async function processFiles(fileList){
   const st=document.getElementById("pdfStatus");
   const pdfs=files.filter(f=>/\.pdf$/i.test(f.name));
   const sheets=files.filter(f=>/\.(xlsx|xls|csv|cell)$/i.test(f.name));
-  if(!pdfs.length && sheets.length){ readFile(sheets[0]); return; }   // 엑셀/CSV/한셀 단일(대체)
+  if(!pdfs.length && sheets.length){ await readSheets(sheets); return; }   // 엑셀/CSV/한셀 여러 개 병합
   if(!pdfs.length){ st.style.display="block"; st.innerHTML="⚠ 지원하지 않는 파일입니다(PDF·엑셀·CSV·한셀)."; return; }
   if(!window.pdfjsLib){ st.style.display="block"; st.innerHTML="⚠ PDF 라이브러리를 불러오지 못했습니다(인터넷 연결 확인)."; return; }
   st.style.display="block";
@@ -827,7 +827,8 @@ async function processFiles(fileList){
   fileInput.value="";                 // 같은 파일을 다시 올릴 수 있도록 초기화
   rebuildFromUploaded();
   const okN=UPLOADED.filter(u=>u.text&&!u.scanned&&!u.err).length, scN=UPLOADED.filter(u=>u.scanned).length;
-  st.innerHTML=`✔ 누적 <b>${UPLOADED.length}개</b> 파일 (학생 ${okN}명${scN?`, 스캔 PDF ${scN}개 추출 실패`:""})`;
+  const skipped = sheets.length? ` <span class="sub">· 엑셀/CSV/한셀 ${sheets.length}개는 PDF와 함께 처리할 수 없어 제외됨(따로 올려주세요)</span>`:"";
+  st.innerHTML=`✔ 누적 <b>${UPLOADED.length}개</b> 파일 (학생 ${okN}명${scN?`, 스캔 PDF ${scN}개 추출 실패`:""})`+skipped;
 }
 
 // 누적된 파일 목록으로 편집창을 재구성하고 다시 불러오기
@@ -894,30 +895,50 @@ async function extractPdfText(buf, merge){
   return {text:finalLines.join("\n"), pages:pdf.numPages};
 }
 
-function readFile(file){        // 엑셀/CSV/한셀 처리(PDF는 processFiles가 전담)
-  const reader=new FileReader();
-  const st=document.getElementById("pdfStatus");
-  const isCell=/\.cell$/i.test(file.name);
-  reader.onload=ev=>{
-    let wb;
-    try{ wb=XLSX.read(ev.target.result,{type:"array"}); }
-    catch(e){
-      if(st){ st.style.display="block";
-        st.innerHTML = isCell
-          ? "⚠ 한셀(.cell) 파일을 바로 읽지 못했습니다. 한셀에서 <b>다른 이름으로 저장 → Excel 통합 문서(*.xlsx)</b> 로 저장한 뒤 올려주세요."
-          : "⚠ 파일을 읽지 못했습니다(형식 확인). xlsx·csv로 저장해 다시 시도해 주세요."; }
-      return;
+// 표 파일 1개를 워크북으로 파싱. CSV는 인코딩(UTF-8/EUC-KR) 자동 감지로 한글 깨짐 방지
+async function parseSheet(file){
+  const buf=await file.arrayBuffer();
+  if(/\.csv$/i.test(file.name)){
+    let txt="";
+    try{ txt=new TextDecoder("utf-8",{fatal:false}).decode(buf); }catch(_){}
+    if(!txt || /�/.test(txt)){             // UTF-8이 아니면 EUC-KR(CP949=한국 엑셀 기본) 시도
+      try{ txt=new TextDecoder("euc-kr").decode(buf); }catch(_){}
     }
-    const ws=wb.Sheets[wb.SheetNames[0]];
-    const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""}).filter(r=>r.some(c=>String(c).trim()!==""));
-    if(rows.length<2){alert("데이터가 부족합니다. 첫 행은 열 이름, 이후 행은 데이터여야 합니다.");return;}
-    HEADERS=rows[0].map((h,i)=>String(h).trim()||("열"+(i+1)));
-    RAWROWS=rows.slice(1);
-    buildMapping();
-    if(st) st.style.display="none";
-    drop.querySelector("div").textContent="✔ "+file.name+" (총 "+RAWROWS.length+"행)";
-  };
-  reader.readAsArrayBuffer(file);
+    txt=txt.replace(/^﻿/,"");              // BOM 제거
+    return XLSX.read(txt,{type:"string"});
+  }
+  return XLSX.read(buf,{type:"array"});                     // xlsx/xls/한셀은 바이너리
+}
+// 엑셀/CSV/한셀 여러 개를 한 번에 병합(첫 파일의 머리글 기준, 이후 파일의 데이터 행을 누적)
+async function readSheets(list){
+  const st=document.getElementById("pdfStatus"); st.style.display="block";
+  let headers=null, allRows=[], okFiles=0; const failed=[];
+  for(const file of list){
+    st.innerHTML=`⏳ 표 파일 읽는 중… ${esc(file.name)}`;
+    try{
+      const wb=await parseSheet(file);
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""}).filter(r=>r.some(c=>String(c).trim()!==""));
+      if(rows.length<2){ failed.push(esc(file.name)+"(빈/데이터 부족)"); continue; }
+      if(!headers) headers=rows[0].map((h,i)=>String(h).trim()||("열"+(i+1)));   // 첫 파일 머리글을 공통 기준으로
+      allRows.push(...rows.slice(1));                                            // 각 파일 첫 행=머리글로 보고 데이터만 누적
+      okFiles++;
+    }catch(e){
+      failed.push(esc(file.name)+(/\.cell$/i.test(file.name)?"(한셀→xlsx로 저장 필요)":"(형식 확인)"));
+    }
+  }
+  if(!headers){
+    st.innerHTML="⚠ 읽을 수 있는 표 파일이 없습니다."+(failed.length?` <span class="sub">실패: ${failed.join(", ")}</span>`:"")+
+      "<br><span class='sub'>한셀(.cell)은 한셀에서 <b>Excel 통합 문서(*.xlsx)</b>로 저장해 올려주세요.</span>";
+    return;
+  }
+  HEADERS=headers; RAWROWS=allRows;
+  buildMapping();
+  fileInput.value="";
+  st.innerHTML=`✔ 표 파일 <b>${okFiles}개</b> 병합 · 총 <b>${allRows.length}행</b>`+
+    (failed.length?` <span class="sub">(실패 ${failed.length}: ${failed.join(", ")})</span>`:"")+
+    ` <span class="sub">— 아래에서 열을 확인하고 [점검 실행]</span>`;
+  drop.querySelector("div").textContent=`✔ 표 파일 ${okFiles}개 (총 ${allRows.length}행)`;
 }
 
 function buildMapping(){
