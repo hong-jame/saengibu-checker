@@ -224,7 +224,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
   .theme-toggle:hover{background:rgba(255,255,255,.28)}
 
   /* ===== ③ 고정 요약 대시보드 + 심각도 세그먼트 막대 ===== */
-  .summary-wrap{position:sticky;top:0;z-index:20;background:var(--panel);margin:-22px -24px 14px;padding:14px 24px 12px;
+  .summary-wrap{position:sticky;top:0;z-index:20;background:var(--panel);margin:0 -24px 14px;padding:6px 24px 12px;
        border-bottom:1px solid var(--line);border-radius:var(--radius) var(--radius) 0 0;backdrop-filter:saturate(1.2)}
   .segbar{display:flex;height:12px;border-radius:999px;overflow:hidden;margin-top:12px;background:var(--line2);box-shadow:inset 0 0 0 1px var(--line)}
   .segbar > span{display:block;transition:width .5s cubic-bezier(.4,0,.2,1)}
@@ -257,7 +257,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
     header{padding:22px 18px 34px} header h1{font-size:19px} .theme-toggle{width:34px;height:34px}
     .wrap{padding:0 12px 40px} .panel{padding:18px 15px}
     .rec-panes{grid-template-columns:1fr}
-    .summary-wrap{margin:-18px -15px 14px;padding:12px 15px}
+    .summary-wrap{margin:0 -15px 14px;padding:6px 15px}
     .stat{flex:1;min-width:calc(50% - 6px)}
     .row{gap:10px}
   }
@@ -1276,11 +1276,19 @@ document.getElementById("printReport").onclick=()=>{
   setTimeout(()=>window.print(),60);
 };
 // ⑤ 필터 위젯 연동
-let STUDENT_FILTER=null, SEV_FILTER="all";
+let STUDENT_FILTER=null;
+let SEV_SET=new Set();   // 선택된 심각도들(비어 있으면 '전체'). 다중 선택 가능
+function syncSevChips(){
+  document.querySelectorAll(".tchip[data-sev]").forEach(x=>{
+    const v=x.dataset.sev;
+    x.classList.toggle("on", v==="all" ? SEV_SET.size===0 : SEV_SET.has(v));
+  });
+}
 document.querySelectorAll(".tchip[data-sev]").forEach(c=>c.onclick=()=>{
-  SEV_FILTER=c.dataset.sev;
-  document.querySelectorAll(".tchip[data-sev]").forEach(x=>x.classList.remove("on"));
-  c.classList.add("on"); applyFilter();
+  const v=c.dataset.sev;
+  if(v==="all") SEV_SET.clear();                          // 전체 → 모두 해제(=전부 표시)
+  else { SEV_SET.has(v)?SEV_SET.delete(v):SEV_SET.add(v); }  // 나머지는 토글(중복 선택 가능)
+  syncSevChips(); applyFilter();
 });
 document.getElementById("typeFilter").onchange=applyFilter;
 document.getElementById("studentSearch").oninput=applyFilter;
@@ -1290,7 +1298,7 @@ function applyFilter(){
   let shown=0;
   document.querySelectorAll(".rec").forEach(r=>{
     let show=true;
-    if(SEV_FILTER!=="all" && r.dataset.sev!==SEV_FILTER) show=false;
+    if(SEV_SET.size && !SEV_SET.has(r.dataset.sev)) show=false;
     if(type && !(r.dataset.types||"").split("|").includes(type)) show=false;
     if(STUDENT_FILTER && r.dataset.student!==STUDENT_FILTER) show=false;
     if(q && !(r.dataset.name||"").toLowerCase().includes(q)) show=false;
@@ -1325,7 +1333,7 @@ document.getElementById("downloadCsv").onclick=()=>{
   const target=LASTRESULTS.filter(r=>{
     const errs=r.issues.filter(i=>i.sev==="err").length;
     const sev = errs? "err" : (r.issues.length? "warn":"ok");
-    if(SEV_FILTER!=="all" && sev!==SEV_FILTER) return false;
+    if(SEV_SET.size && !SEV_SET.has(sev)) return false;
     if(type && !r.issues.some(i=>i.type===type)) return false;
     if(STUDENT_FILTER && (r.rec.student||"")!==STUDENT_FILTER) return false;
     if(q && !((r.rec.student||r.rec.who||"")).toLowerCase().includes(q)) return false;
@@ -1343,7 +1351,7 @@ document.getElementById("downloadCsv").onclick=()=>{
   if(target.length===0){ alert("내보낼 항목이 없습니다."); return; }
   const csv="﻿"+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\r\n");
   const blob=new Blob([csv],{type:"text/csv"});const a=document.createElement("a");
-  const sevTag={all:"",err:"_오류",warn:"_주의",ok:"_이상없음"}[SEV_FILTER]||"";
+  const sevTag = SEV_SET.size===1 ? ({err:"_오류",warn:"_주의",ok:"_이상없음"}[[...SEV_SET][0]]||"") : "";
   const suffix=sevTag+(STUDENT_FILTER?"_"+STUDENT_FILTER.replace(/[\\/:*?"<>|]/g,""):"");
   a.href=URL.createObjectURL(blob);a.download="생기부_점검결과"+suffix+".csv";a.click();
 };
