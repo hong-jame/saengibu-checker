@@ -318,7 +318,7 @@ var o=[];var l=Array.isArray(e);for(f=n.s.c;f<=n.e.c;++f)s[f]=ya(f);for(var c=n.
 
     <div id="mapArea" style="display:none;margin-top:14px;border-top:1px solid var(--line2);padding-top:14px">
       <div class="row">
-        <div class="field"><label>대상(이름·학번) 열</label><select id="colWho"></select></div>
+        <div class="field" style="min-width:200px"><label>대상 (자동: 학번+이름)</label><div class="small" id="whoInfo" style="padding:9px 0;line-height:1.4">—</div></div>
         <div class="field"><label>항목·과목 열</label><select id="colWhat"></select></div>
         <div class="field"><label>점검할 내용 열 <b style="color:var(--err)">*</b></label><select id="colText"></select></div>
       </div>
@@ -1014,40 +1014,53 @@ async function readSheets(list){
 
 function buildMapping(){
   const mk=sel=>{sel.innerHTML="";HEADERS.forEach((h,i)=>{const o=document.createElement("option");o.value=i;o.textContent=h;sel.appendChild(o);});};
-  const w=document.getElementById("colWho"),wt=document.getElementById("colWhat"),tx=document.getElementById("colText");
-  [w,wt,tx].forEach(mk);
-  // 추정
+  const wt=document.getElementById("colWhat"),tx=document.getElementById("colText");
+  [wt,tx].forEach(mk);
   const guess=(kw)=>HEADERS.findIndex(h=>kw.some(k=>h.includes(k)));
-  const gw=guess(["과목","항목","영역","교과"]); if(gw>=0)wt.value=gw;
   const gt=guess(["내용","특기","세특","특기사항","기재","텍스트"]); tx.value=gt>=0?gt:HEADERS.length-1;
   const none=document.createElement("option");none.value=-1;none.textContent="(없음)";
   document.getElementById("colWhat").appendChild(none.cloneNode(true));
-  w.appendChild(none.cloneNode(true));
-  // 대상(colWho): 이름·학번·반/번호 열을 조합한 '함께 표시' 옵션 자동 생성(실제 열 이름으로 표기) (#2)
-  const nameI = guess(["이름","성명","성함","학생명"]);
-  const idI   = guess(["학번","학생개인번호","학생번호","개인번호"]);
-  const classI= HEADERS.findIndex(h=>h.includes("반"));      // '반/번호' 등 반 관련 열
-  const addCombo=(cols,txt)=>{ const o=document.createElement("option"); o.value=cols.join("+"); o.textContent=txt; w.insertBefore(o, w.firstChild); return o.value; };
-  let defVal="";
-  if(idI>=0 && nameI>=0 && idI!==nameI)        defVal=addCombo([idI,nameI], `${HEADERS[idI]} + ${HEADERS[nameI]}`);
-  if(classI>=0 && nameI>=0 && classI!==nameI)  defVal=addCombo([classI,nameI], `${HEADERS[classI]} + ${HEADERS[nameI]}`);  // 반/번호 + 이름
-  if(defVal) w.value=defVal;                                 // 결합 옵션이 있으면 기본 선택(반/번호+이름 우선)
-  else { const gi=guess(["이름","성명","학생","학번","번호"]); if(gi>=0) w.value=gi; }
+  const gw=guess(["과목","항목","영역","교과"]); wt.value = gw>=0? gw : -1;   // 과목 열 없으면 (없음)
+
+  // ── 대상 자동 구성: 학년·반·번호·이름을 추출해 학번(2학년1반15번→20115)+이름으로 만듦(수동 선택 없음) ──
+  const H=HEADERS;
+  const gradeI = H.findIndex(h=>h.includes("학년") && !h.includes("학년도"));
+  const combinedI = H.findIndex(h=>/반\s*[\/\-]\s*번호|반번호|반\/번호/.test(h));         // '반/번호' 한 열
+  const classI = combinedI>=0 ? -1 : H.findIndex(h=>/^\s*반\s*$|학급/.test(h));
+  const numI   = combinedI>=0 ? -1 : H.findIndex(h=>/번호/.test(h) && !/개인|과목|코드|반/.test(h));
+  const nameI  = guess(["이름","성명","성함","학생명"]);
+  const digits=v=>String(v==null?"":v).replace(/[^0-9]/g,"");
+  const p2=v=>{ const d=digits(v); return d? d.padStart(2,"0").slice(-2):""; };
+  const cell=(r,ci)=>String(r[+ci]==null?"":r[+ci]).trim();
+  const studentNo=r=>{
+    const g = gradeI>=0 ? digits(r[gradeI]).slice(-1) : "";
+    let cc="", nn="";
+    if(combinedI>=0){ const ps=String(r[combinedI]==null?"":r[combinedI]).match(/\d+/g)||[]; cc=ps[0]?String(ps[0]).padStart(2,"0").slice(-2):""; nn=ps[1]?String(ps[1]).padStart(2,"0").slice(-2):""; }
+    else { cc=classI>=0?p2(r[classI]):""; nn=numI>=0?p2(r[numI]):""; }
+    return g+cc+nn;                          // 2 + 01 + 15 = 20115
+  };
+  const whoOf=(r,i)=>{ const no=studentNo(r), nm=nameI>=0?cell(r,nameI):""; return [no,nm].filter(Boolean).join(" ") || ("행 "+(i+1)); };
+
+  // 자동 인식 결과 안내
+  const parts=[]; if(gradeI>=0)parts.push(H[gradeI]);
+  if(combinedI>=0)parts.push(H[combinedI]); else { if(classI>=0)parts.push(H[classI]); if(numI>=0)parts.push(H[numI]); }
+  if(nameI>=0)parts.push(H[nameI]);
+  const hasNo = gradeI>=0||combinedI>=0||classI>=0||numI>=0;
+  document.getElementById("whoInfo").innerHTML = hasNo
+    ? `<b>학번+이름</b> 자동 <span class="sub">(${parts.map(esc).join(" · ")})</span>`
+    : (nameI>=0 ? `<b>이름</b> 자동 <span class="sub">(${esc(H[nameI])})</span>` : `<b>행 번호</b> <span class="sub">(학년·반·번호·이름 열 없음)</span>`);
+
   document.getElementById("mapArea").style.display="block";
-  const cell=(r,ci)=>String(r[+ci]||"").trim();
   const upd=()=>{
-    RECORDS=RAWROWS.map((r,i)=>{
-      const wv=String(w.value); let who;
-      if(wv.includes("+")) who=wv.split("+").map(c=>cell(r,c)).filter(Boolean).join(" ")||("행 "+(i+1));   // 학번+이름 결합
-      else if(wv==="-1") who="행 "+(i+1);
-      else who=cell(r,wv)||("행 "+(i+1));
-      return { who, what: wt.value==-1?"":cell(r,wt.value),
-               text:cell(r,tx.value), page:null, student:"", auto:false };
-    });
+    RECORDS=RAWROWS.map((r,i)=>({
+      who: whoOf(r,i),
+      what: wt.value==-1?"":cell(r,wt.value),
+      text: cell(r,tx.value), page:null, student:"", auto:false
+    }));
     document.getElementById("rowCount").textContent="점검 대상 "+RECORDS.length+"건 준비됨";
     afterLoad();
   };
-  [w,wt,tx].forEach(s=>s.onchange=upd);
+  [wt,tx].forEach(s=>s.onchange=upd);
   upd();
 }
 
