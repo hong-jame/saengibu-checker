@@ -906,9 +906,9 @@ async function parseSheet(file){
       try{ txt=new TextDecoder("euc-kr").decode(buf); }catch(_){}
     }
     txt=txt.replace(/^﻿/,"");              // BOM 제거
-    return XLSX.read(txt,{type:"string"});
+    return XLSX.read(txt,{type:"string",raw:true,cellDates:false});   // raw:true → '3-15' 등을 날짜로 변환하지 않음
   }
-  return XLSX.read(buf,{type:"array"});                     // xlsx/xls/한셀은 바이너리
+  return XLSX.read(buf,{type:"array",raw:true,cellDates:false});      // xlsx/xls/한셀도 원본 값 유지
 }
 // 엑셀/CSV/한셀 여러 개를 한 번에 병합(첫 파일의 머리글 기준, 이후 파일의 데이터 행을 누적)
 async function readSheets(list){
@@ -919,7 +919,7 @@ async function readSheets(list){
     try{
       const wb=await parseSheet(file);
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:""}).filter(r=>r.some(c=>String(c).trim()!==""));
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:true}).filter(r=>r.some(c=>String(c).trim()!==""));
       if(rows.length<2){ failed.push(esc(file.name)+"(빈/데이터 부족)"); continue; }
       if(!headers) headers=rows[0].map((h,i)=>String(h).trim()||("열"+(i+1)));   // 첫 파일 머리글을 공통 기준으로
       allRows.push(...rows.slice(1));                                            // 각 파일 첫 행=머리글로 보고 데이터만 누적
@@ -953,17 +953,16 @@ function buildMapping(){
   const none=document.createElement("option");none.value=-1;none.textContent="(없음)";
   document.getElementById("colWhat").appendChild(none.cloneNode(true));
   w.appendChild(none.cloneNode(true));
-  // 대상 열: 이름·학번 열을 각각 찾아 '함께 표시' 결합 옵션 제공 (#2)
-  const nameI=guess(["이름","성명","성함","학생명"]);
-  const idI=guess(["학번","학생번호","번호"]);
-  if(nameI>=0 && idI>=0 && nameI!==idI){
-    const addCombo=(val,txt)=>{ const o=document.createElement("option"); o.value=val; o.textContent=txt; w.insertBefore(o, w.firstChild); };
-    addCombo(idI+"+"+nameI, "학번 + 이름 (함께)");
-    addCombo(nameI+"+"+idI, "이름 + 학번 (함께)");
-    w.value = nameI+"+"+idI;                    // 기본: 이름+학번 함께 표시
-  } else {
-    const gi=guess(["이름","성명","학생","학번","번호"]); if(gi>=0) w.value=gi;
-  }
+  // 대상(colWho): 이름·학번·반/번호 열을 조합한 '함께 표시' 옵션 자동 생성(실제 열 이름으로 표기) (#2)
+  const nameI = guess(["이름","성명","성함","학생명"]);
+  const idI   = guess(["학번","학생개인번호","학생번호","개인번호"]);
+  const classI= HEADERS.findIndex(h=>h.includes("반"));      // '반/번호' 등 반 관련 열
+  const addCombo=(cols,txt)=>{ const o=document.createElement("option"); o.value=cols.join("+"); o.textContent=txt; w.insertBefore(o, w.firstChild); return o.value; };
+  let defVal="";
+  if(idI>=0 && nameI>=0 && idI!==nameI)        defVal=addCombo([idI,nameI], `${HEADERS[idI]} + ${HEADERS[nameI]}`);
+  if(classI>=0 && nameI>=0 && classI!==nameI)  defVal=addCombo([classI,nameI], `${HEADERS[classI]} + ${HEADERS[nameI]}`);  // 반/번호 + 이름
+  if(defVal) w.value=defVal;                                 // 결합 옵션이 있으면 기본 선택(반/번호+이름 우선)
+  else { const gi=guess(["이름","성명","학생","학번","번호"]); if(gi>=0) w.value=gi; }
   document.getElementById("mapArea").style.display="block";
   const cell=(r,ci)=>String(r[+ci]||"").trim();
   const upd=()=>{
