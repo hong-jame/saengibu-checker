@@ -273,7 +273,8 @@
       </div>
     </div>
     <div class="row" style="margin-top:8px">
-      <label class="switch" style="font-weight:600"><input type="checkbox" id="cMask" checked> 🔒 개인정보 마스킹 — 이름(홍○○)·주민등록번호·연락처·이메일을 화면·저장에서 가림</label>
+      <label class="switch" style="font-weight:600"><input type="checkbox" id="cMask" checked> 🔒 민감정보 마스킹 — 주민등록번호·연락처·이메일을 가림</label>
+      <label class="switch" style="font-weight:600"><input type="checkbox" id="cMaskName"> 👤 이름도 가리기 (홍○○) — 화면 공유·인쇄 때</label>
     </div>
     <div class="row" style="margin-top:6px">
       <label class="switch"><input type="checkbox" id="cBan" checked> 금지어·대체어</label>
@@ -947,19 +948,33 @@ function buildMapping(){
   [w,wt,tx].forEach(mk);
   // 추정
   const guess=(kw)=>HEADERS.findIndex(h=>kw.some(k=>h.includes(k)));
-  const gi=guess(["이름","성명","학생","학번","번호"]); if(gi>=0)w.value=gi;
   const gw=guess(["과목","항목","영역","교과"]); if(gw>=0)wt.value=gw;
   const gt=guess(["내용","특기","세특","특기사항","기재","텍스트"]); tx.value=gt>=0?gt:HEADERS.length-1;
   const none=document.createElement("option");none.value=-1;none.textContent="(없음)";
   document.getElementById("colWhat").appendChild(none.cloneNode(true));
-  const none2=none.cloneNode(true);document.getElementById("colWho").appendChild(none2);
+  w.appendChild(none.cloneNode(true));
+  // 대상 열: 이름·학번 열을 각각 찾아 '함께 표시' 결합 옵션 제공 (#2)
+  const nameI=guess(["이름","성명","성함","학생명"]);
+  const idI=guess(["학번","학생번호","번호"]);
+  if(nameI>=0 && idI>=0 && nameI!==idI){
+    const addCombo=(val,txt)=>{ const o=document.createElement("option"); o.value=val; o.textContent=txt; w.insertBefore(o, w.firstChild); };
+    addCombo(idI+"+"+nameI, "학번 + 이름 (함께)");
+    addCombo(nameI+"+"+idI, "이름 + 학번 (함께)");
+    w.value = nameI+"+"+idI;                    // 기본: 이름+학번 함께 표시
+  } else {
+    const gi=guess(["이름","성명","학생","학번","번호"]); if(gi>=0) w.value=gi;
+  }
   document.getElementById("mapArea").style.display="block";
+  const cell=(r,ci)=>String(r[+ci]||"").trim();
   const upd=()=>{
-    RECORDS=RAWROWS.map((r,i)=>({
-      who: w.value==-1?("행 "+(i+1)):String(r[w.value]||"").trim()||("행 "+(i+1)),
-      what: wt.value==-1?"":String(r[wt.value]||"").trim(),
-      text:String(r[tx.value]||"").trim(), page:null, student:"", auto:false
-    }));
+    RECORDS=RAWROWS.map((r,i)=>{
+      const wv=String(w.value); let who;
+      if(wv.includes("+")) who=wv.split("+").map(c=>cell(r,c)).filter(Boolean).join(" ")||("행 "+(i+1));   // 학번+이름 결합
+      else if(wv==="-1") who="행 "+(i+1);
+      else who=cell(r,wv)||("행 "+(i+1));
+      return { who, what: wt.value==-1?"":cell(r,wt.value),
+               text:cell(r,tx.value), page:null, student:"", auto:false };
+    });
     document.getElementById("rowCount").textContent="점검 대상 "+RECORDS.length+"건 준비됨";
     afterLoad();
   };
@@ -1046,9 +1061,10 @@ function markDuplicates(res){
 
 /* ---------------- 렌더링 ---------------- */
 /* ---------------- 개인정보 마스킹 ---------------- */
-let MASK=true;   // render() 시 체크박스에서 갱신
-// 이름: 앞 한글 이름(2~4자)만 첫 글자 남기고 ○ 처리 (박경빈 → 박○○, 박경빈_생기부 → 박○○_생기부)
-function maskName(s){ if(!MASK||!s) return s; return s.replace(/[가-힣]{2,4}/, m=>m[0]+"○".repeat(m.length-1)); }
+let MASK=true;        // 민감정보(주민번호·연락처·이메일) 마스킹 — render() 시 cMask에서 갱신
+let MASK_NAME=false;  // 이름 마스킹(기본 꺼짐: 전체 이름 표시) — render() 시 cMaskName에서 갱신
+// 이름: 앞 한글 이름(2~4자)만 첫 글자 남기고 ○ 처리 (박경빈 → 박○○). 기본은 꺼져 있어 전체 이름 표시
+function maskName(s){ if(!MASK_NAME||!s) return s; return s.replace(/[가-힣]{2,4}/, m=>m[0]+"○".repeat(m.length-1)); }
 // 본문의 명확한 개인정보만 가림. 길이 보존(하이라이트 위치 안 깨짐)
 function maskPII(t){
   if(!MASK||!t) return t;
@@ -1097,7 +1113,8 @@ function recLabel(r, idx){
   return parts.length? parts.join(" · ") : ("항목 "+(idx+1));
 }
 function render(res){
-  MASK=document.getElementById("cMask").checked;   // 개인정보 마스킹 상태 반영
+  MASK=document.getElementById("cMask").checked;            // 민감정보 마스킹
+  MASK_NAME=document.getElementById("cMaskName").checked;   // 이름 마스킹
   document.getElementById("resultPanel").style.display="block";
   let nErr=0,nWarn=0,nClean=0,totIssue=0;
   res.forEach(r=>{
@@ -1303,15 +1320,19 @@ function applyFilter(){
 })();
 // 브라우저 내장 AI 감지(있으면 각 항목에 'AI 윤문' 버튼 노출)
 initAI();
-// 개인정보 마스킹 토글 — 즉시 반영(파일 칩 + 결과 다시 그리기)
-document.getElementById("cMask").onchange=()=>{
+// 마스킹 토글(민감정보·이름) — 즉시 반영(파일 칩 + 결과 다시 그리기)
+function applyMaskToggles(){
   MASK=document.getElementById("cMask").checked;
+  MASK_NAME=document.getElementById("cMaskName").checked;
   renderFileList();
   if(LASTRESULTS && LASTRESULTS.length) render(LASTRESULTS);
-};
+}
+document.getElementById("cMask").onchange=applyMaskToggles;
+document.getElementById("cMaskName").onchange=applyMaskToggles;
 
 document.getElementById("downloadCsv").onclick=()=>{
   MASK=document.getElementById("cMask").checked;
+  MASK_NAME=document.getElementById("cMaskName").checked;
   // 현재 화면 필터(심각도·유형·학생)와 동일하게 내보냄
   const type=document.getElementById("typeFilter").value;
   const q=(document.getElementById("studentSearch").value||"").trim().toLowerCase();
