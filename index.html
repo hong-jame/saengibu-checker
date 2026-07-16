@@ -785,36 +785,53 @@ function jongOf(ch){ const c=(ch||"").charCodeAt(0); if(!(c>=0xAC00&&c<=0xD7A3))
 // 조사처럼 끝나지만 실제로는 낱말/어미인 경우 — 검사 제외(오탐 방지)
 // 접미 매칭: 복합어를 이루는 말(수행평가·역효과…)과 어미(~한가/인가)
 const JOSA_SKIP_SUFFIX=[
-  "평가","증가","추가","참가","국가","물가","단가","원가","정가","저가","고가","특가","진가","인가","감가","등가","대가","성가","전가","휴가","연가","종가","출가","반가","불가","허가","작가","화가","한가","던가",
+  // ~가 : 낱말·어미
+  "평가","증가","추가","참가","국가","물가","단가","원가","정가","저가","고가","특가","진가","감가","등가","대가","성가","전가","휴가","연가","종가","출가","반가","불가","허가","한가","던가",
+  // ~가 : 사람을 뜻하는 접미사(소설가·음악가…)
+  "작가","화가","소설가","음악가","예술가","사업가","기업가","실업가","건축가","조각가","발명가","성악가","작곡가","대식가","미식가","등반가","수집가","애호가","공예가","무용가",
+  // ~과 : 낱말
   "교과","효과","사과","이과","문과","치과","내과","외과","예과",
-  "진로","경로","선로","통로","종로","항로","판로","원로","연로","향로",
+  // ~로 : 낱말
+  "진로","경로","선로","통로","종로","항로","판로","원로","연로","향로","육로","용광로","소각로",
+  // ~은 : ㅅ불규칙 활용(짓다→지은, 낫다→나은…). '연결지은·관련지은'처럼 복합어로도 쓰여 접미로 걸러야 함
+  "지은","이은","나은","부은","그은",
+  // ~을 : 낱말
+  "가을","마을",
+  // PDF 줄바꿈으로 자주 잘리는 과학 용어 조각(온실가스 → '온실가' + '스')
+  "온실가",
 ];
-// 정확 일치: 짧아서 접미로 걸면 진짜 오류('교사이')를 놓치는 낱말·활용형
-const JOSA_SKIP_EXACT=new Set(["사이","차이","나이","아이","오이","누이","가을","마을","지은","부은","이은","나은","그은"]);
-const josaSkip = tok => JOSA_SKIP_EXACT.has(tok) || JOSA_SKIP_SUFFIX.some(w=>tok.endsWith(w));
-// 토큰별로 끝 조사를 검사해 [시작,끝,클래스,잘못,올바름] 목록 반환
+// 2글자 낱말(평가·효과·사이·차이…)은 josaFix의 길이 조건으로 이미 걸러진다
+const josaSkip = tok => JOSA_SKIP_SUFFIX.some(w=>tok.endsWith(w));
+// 토큰의 끝 조사가 틀렸으면 {len(바꿀 글자수), right} 반환. 아니면 null
+function josaFix(tok){
+  // 2글자 미만 어간은 검사하지 않음 — 낱말(평가·효과·진로·사이)과
+  // PDF 줄바꿈으로 잘린 조각(바이러스→'바이', 데이터→'데이')의 오탐을 막는다
+  if(tok.length<3 || josaSkip(tok)) return null;
+  if(tok.slice(-2)==="으로"){                       // 앞이 받침 없거나 ㄹ받침이면 '로'가 맞음
+    const j=jongOf(tok[tok.length-3]);
+    return (j===0||j===8) ? {len:2, right:"로"} : null;
+  }
+  const last=tok[tok.length-1], j=jongOf(tok[tok.length-2]);
+  if(j<0) return null;
+  const has=j!==0, rieul=j===8, nieun=j===4;
+  // '는'(받침 뒤)은 관형사형 어미(있는·없는·먹는)와 구분이 안 되어 검사하지 않음
+  const right = last==="를"&&has ? "을" : last==="을"&&!has ? "를"
+              : last==="가"&&has&&!nieun ? "이"      // ㄴ받침 뒤 '가'는 의문 어미(~는가·~은가·~인가)라 제외
+              : last==="이"&&!has ? "가"
+              : last==="와"&&has ? "과" : last==="과"&&!has ? "와"
+              : last==="은"&&!has ? "는"
+              : last==="로"&&has&&!rieul ? "으로" : null;
+  return right ? {len:1, right} : null;
+}
+// 점검용: [시작,끝,클래스,잘못,올바름] 목록
 function checkJosa(raw){
   const t=maskQuotes(raw), out=[];
   const re=/[가-힣]{2,}/g; let m;
   while((m=re.exec(t))){
-    const tok=m[0];
-    if(josaSkip(tok)) continue;
-    // 2글자 조사 '으로' 먼저 — 앞이 받침 없거나 ㄹ받침이면 '로'가 맞음
-    if(tok.length>=3 && tok.slice(-2)==="으로"){
-      const j=jongOf(tok[tok.length-3]);
-      if(j===0||j===8) out.push([m.index+tok.length-2, m.index+tok.length, "info", "으로", "로"]);
-      continue;
-    }
-    const last=tok[tok.length-1], j=jongOf(tok[tok.length-2]);
-    if(j<0) continue;
-    const has=j!==0, rieul=j===8;
-    // '는'(받침 뒤)은 관형사형 어미(있는·없는·먹는)와 구분이 안 되어 검사하지 않음
-    const right = last==="를"&&has ? "을" : last==="을"&&!has ? "를"
-                : last==="가"&&has ? "이" : last==="이"&&!has ? "가"
-                : last==="와"&&has ? "과" : last==="과"&&!has ? "와"
-                : last==="은"&&!has ? "는"
-                : last==="로"&&has&&!rieul ? "으로" : null;
-    if(right){ const at=m.index+tok.length-1; out.push([at, at+1, "info", last, right]); }
+    const tok=m[0], f=josaFix(tok);
+    if(!f) continue;
+    const end=m.index+tok.length;
+    out.push([end-f.len, end, "info", tok.slice(-f.len), f.right]);
   }
   return out;
 }
@@ -822,22 +839,9 @@ function checkJosa(raw){
 function fixJosa(text){
   let n=0;
   const out=(text||"").replace(/[가-힣]{2,}/g, tok=>{
-    if(josaSkip(tok)) return tok;
-    if(tok.length>=3 && tok.slice(-2)==="으로"){
-      const j=jongOf(tok[tok.length-3]);
-      if(j===0||j===8){ n++; return tok.slice(0,-2)+"로"; }
-      return tok;
-    }
-    const last=tok[tok.length-1], j=jongOf(tok[tok.length-2]);
-    if(j<0) return tok;
-    const has=j!==0, rieul=j===8;
-    const right = last==="를"&&has ? "을" : last==="을"&&!has ? "를"
-                : last==="가"&&has ? "이" : last==="이"&&!has ? "가"
-                : last==="와"&&has ? "과" : last==="과"&&!has ? "와"
-                : last==="은"&&!has ? "는"
-                : last==="로"&&has&&!rieul ? "으로" : null;
-    if(right){ n++; return tok.slice(0,-1)+right; }
-    return tok;
+    const f=josaFix(tok);
+    if(!f) return tok;
+    n++; return tok.slice(0,-f.len)+f.right;
   });
   return {text:out, n};
 }
