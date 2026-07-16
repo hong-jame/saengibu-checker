@@ -289,6 +289,7 @@
       <label class="switch"><input type="checkbox" id="cBan" checked> 금지어·대체어</label>
       <label class="switch"><input type="checkbox" id="cForm" checked> 형식 규칙(특수문자·명사형종결·한글원칙·공란)</label>
       <label class="switch"><input type="checkbox" id="cPunct" checked> 문장부호·띄어쓰기(연속 공백·부호 모양)</label>
+      <label class="switch"><input type="checkbox" id="cJosa" checked> 조사(을/를·이/가·과/와·으로/로)</label>
       <label class="switch"><input type="checkbox" id="cEdu" checked> 사교육 유발 요소</label>
       <label class="switch"><input type="checkbox" id="cBlind" checked> 고교 블라인드</label>
       <label class="switch"><input type="checkbox" id="cDup" checked> 학생 간 복사·중복</label>
@@ -674,6 +675,19 @@ function analyze(text, opts, ctx, what){
     if(ns.length) push("warn","띄어쓰기",`쉼표 뒤 공백 누락 ${ns.length}곳`, ns);
   }
 
+  // 조사(을/를·이/가·과/와·은/는·으로/로) — 앞 글자 받침 기준. 오탐 여지가 있어 '확인' 수준
+  if(opts.josa){
+    const groups=new Map();
+    for(const [s,e,cls,wrong,right] of checkJosa(t)){
+      const k=wrong+"→"+right;
+      (groups.get(k)||groups.set(k,[]).get(k)).push([s,e,cls]);
+    }
+    for(const [k,ranges] of groups){
+      const [wrong,right]=k.split("→");
+      push("info","조사",`‘${wrong}’ → <b>‘${right}’</b> · ${ranges.length}곳 — 앞 글자의 받침 기준으로 맞지 않아 보임. 확인 필요`, ranges);
+    }
+  }
+
   const chars=[...t.replace(/\n/g,"")].length;   // 표시용 글자수(검증하지 않음)
   return {issues, chars};
 }
@@ -695,6 +709,69 @@ function blankQuotes(t){
 }
 // 과학·수학 단위(2글자 이상; 한 글자 m·g·L·W 등은 이미 단일문자로 제외됨)
 const EN_UNITS=new Set(["cm","mm","km","nm","dm","kg","mg","mL","ml","dL","kL","cc","mol","Pa","kPa","hPa","atm","bar","kJ","cal","kcal","kW","MW","kV","mV","mA","Hz","kHz","MHz","GHz","dB","lm","lx","cd","ms","min","rpm","ppm","ppb","bpm","fps","dpi","px","ha","mmHg"]);
+/* ---------------- 조사(을/를·이/가·과/와·으로/로) 점검 ---------------- */
+// 한글 음절의 종성(받침) 코드. 0이면 받침 없음, 8이면 ㄹ받침. 한글이 아니면 -1
+function jongOf(ch){ const c=(ch||"").charCodeAt(0); if(!(c>=0xAC00&&c<=0xD7A3)) return -1; return (c-0xAC00)%28; }
+// 조사처럼 끝나지만 실제로는 낱말/어미인 경우 — 검사 제외(오탐 방지)
+// 접미 매칭: 복합어를 이루는 말(수행평가·역효과…)과 어미(~한가/인가)
+const JOSA_SKIP_SUFFIX=[
+  "평가","증가","추가","참가","국가","물가","단가","원가","정가","저가","고가","특가","진가","인가","감가","등가","대가","성가","전가","휴가","연가","종가","출가","반가","불가","허가","작가","화가","한가","던가",
+  "교과","효과","사과","이과","문과","치과","내과","외과","예과",
+  "진로","경로","선로","통로","종로","항로","판로","원로","연로","향로",
+];
+// 정확 일치: 짧아서 접미로 걸면 진짜 오류('교사이')를 놓치는 낱말·활용형
+const JOSA_SKIP_EXACT=new Set(["사이","차이","나이","아이","오이","누이","가을","마을","지은","부은","이은","나은","그은"]);
+const josaSkip = tok => JOSA_SKIP_EXACT.has(tok) || JOSA_SKIP_SUFFIX.some(w=>tok.endsWith(w));
+// 토큰별로 끝 조사를 검사해 [시작,끝,클래스,잘못,올바름] 목록 반환
+function checkJosa(raw){
+  const t=maskQuotes(raw), out=[];
+  const re=/[가-힣]{2,}/g; let m;
+  while((m=re.exec(t))){
+    const tok=m[0];
+    if(josaSkip(tok)) continue;
+    // 2글자 조사 '으로' 먼저 — 앞이 받침 없거나 ㄹ받침이면 '로'가 맞음
+    if(tok.length>=3 && tok.slice(-2)==="으로"){
+      const j=jongOf(tok[tok.length-3]);
+      if(j===0||j===8) out.push([m.index+tok.length-2, m.index+tok.length, "info", "으로", "로"]);
+      continue;
+    }
+    const last=tok[tok.length-1], j=jongOf(tok[tok.length-2]);
+    if(j<0) continue;
+    const has=j!==0, rieul=j===8;
+    // '는'(받침 뒤)은 관형사형 어미(있는·없는·먹는)와 구분이 안 되어 검사하지 않음
+    const right = last==="를"&&has ? "을" : last==="을"&&!has ? "를"
+                : last==="가"&&has ? "이" : last==="이"&&!has ? "가"
+                : last==="와"&&has ? "과" : last==="과"&&!has ? "와"
+                : last==="은"&&!has ? "는"
+                : last==="로"&&has&&!rieul ? "으로" : null;
+    if(right){ const at=m.index+tok.length-1; out.push([at, at+1, "info", last, right]); }
+  }
+  return out;
+}
+// 윤문용: 조사를 올바른 형태로 교정한 텍스트와 교정 수 반환
+function fixJosa(text){
+  let n=0;
+  const out=(text||"").replace(/[가-힣]{2,}/g, tok=>{
+    if(josaSkip(tok)) return tok;
+    if(tok.length>=3 && tok.slice(-2)==="으로"){
+      const j=jongOf(tok[tok.length-3]);
+      if(j===0||j===8){ n++; return tok.slice(0,-2)+"로"; }
+      return tok;
+    }
+    const last=tok[tok.length-1], j=jongOf(tok[tok.length-2]);
+    if(j<0) return tok;
+    const has=j!==0, rieul=j===8;
+    const right = last==="를"&&has ? "을" : last==="을"&&!has ? "를"
+                : last==="가"&&has ? "이" : last==="이"&&!has ? "가"
+                : last==="와"&&has ? "과" : last==="과"&&!has ? "와"
+                : last==="은"&&!has ? "는"
+                : last==="로"&&has&&!rieul ? "으로" : null;
+    if(right){ n++; return tok.slice(0,-1)+right; }
+    return tok;
+  });
+  return {text:out, n};
+}
+
 function checkEndings(raw){
   const t=maskQuotes(raw);
   const bad=[];
@@ -751,6 +828,9 @@ function polishRules(text, o){
   if(o.ending!==false){                                 // 종결어미 명사형화
     let e=0; for(const [re,rep] of ENDMAP){ const b=t; t=t.replace(re,rep); if(t!==b) e++; }
     if(e) ch.push("종결어미 정리");
+  }
+  if(o.josa!==false){                                    // 조사 교정(학생를→학생을, 학교으로→학교로)
+    const r=fixJosa(t); if(r.n){ t=r.text; ch.push(`조사 ${r.n}건 교정`); }
   }
   { const b=t;                                           // 문장부호·띄어쓰기 정규화
     t=t.replace(/[，、]/g,",").replace(/[．。｡]/g,".").replace(/､/g,",")
@@ -1088,7 +1168,7 @@ document.getElementById("runBtn").onclick=async ()=>{
     return;
   }
   const opts={
-    ban:cBan.checked, form:cForm.checked, punct:cPunct.checked, edu:cEdu.checked, blind:cBlind.checked, dup:cDup.checked, neis:cNeis.checked,
+    ban:cBan.checked, form:cForm.checked, punct:cPunct.checked, josa:cJosa.checked, edu:cEdu.checked, blind:cBlind.checked, dup:cDup.checked, neis:cNeis.checked,
     blindTerms:document.getElementById("blindTerms").value.split(",").map(x=>x.trim()).filter(Boolean),
     allowEng:document.getElementById("allowEng").value.split(",").map(x=>x.trim()).filter(Boolean)
   };
@@ -1221,7 +1301,7 @@ const CHECKLIST=[
   {no:"11-③", ref:"p.117·127~128", q:"과세특 기재 범위를 준수하였는가?",
    d:"학생참여형 수업 및 수업과 연계된 수행평가 등에서 교사가 직접 관찰·평가한 내용", manual:true},
   {no:"11-④", ref:"—", q:"비문이나 오탈자는 없는가?",
-   d:"자동은 문장부호·띄어쓰기만 확인 — 비문 여부는 교사 판단", auto:["문장부호","띄어쓰기"], manual:true},
+   d:"자동은 조사(을/를·이/가)·문장부호·띄어쓰기만 확인 — 비문 여부는 교사 판단", auto:["조사","문장부호","띄어쓰기"], manual:true},
 ];
 function renderChecklist(res){
   const cnt={};
