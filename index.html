@@ -1005,10 +1005,35 @@ async function parseSheet(file){
   }
   return XLSX.read(buf,{type:"array",raw:true,cellDates:false});      // xlsx/xls/한셀도 원본 값 유지
 }
+// ── 나이스 출력물 엑셀 대응 ──
+// 나이스에서 뽑은 엑셀은 1행이 머리글이 아니라, 위에 날짜·제목·'교과목 :'·학년 정보가 있고
+// 페이지마다 머리글과 바닥글(쪽번호·학교명)이 반복된다. 머리글 행을 찾아내고 레이아웃 행은 걸러야 한다.
+const HDR_KEYS=["반/번호","반","번호","성명","이름","학번","학적변동","세부능력","특기사항","과목","내용","학년","구분"];
+function isHeaderRow(r){
+  const cells=r.map(c=>String(c==null?"":c).trim()).filter(Boolean);
+  if(cells.length<2) return false;
+  let hits=0;
+  for(const c of cells){ if(c.length<=12 && HDR_KEYS.some(k=>c===k||c.includes(k))) hits++; }
+  return hits>=2;
+}
+function findHeaderRow(rows){
+  for(let i=0;i<Math.min(rows.length,30);i++) if(isHeaderRow(rows[i])) return i;
+  return 0;
+}
+// 머리글 위쪽 안내 줄에서 학년·교과목 추출 ('… 3학년 3 강의실', '교과목 : 융합과학(2)')
+function metaFrom(rows, hi){
+  let grade="", subject="";
+  for(let i=0;i<hi;i++){
+    const line=rows[i].map(c=>String(c==null?"":c)).join(" ");
+    if(!grade){ const g=line.match(/(\d)\s*학년(?!도)/); if(g) grade=g[1]; }        // '2026학년도'는 제외
+    if(!subject){ const s=line.match(/교과목\s*[:：]\s*(.+)/); if(s) subject=s[1].trim(); }
+  }
+  return {grade, subject};
+}
 // 엑셀/CSV/한셀 여러 개를 한 번에 병합(첫 파일의 머리글 기준, 이후 파일의 데이터 행을 누적)
 async function readSheets(list){
   const st=document.getElementById("pdfStatus"); st.style.display="block";
-  let headers=null, allRows=[], okFiles=0; const failed=[];
+  let headers=null, baseLen=0, nameCol=-1, allRows=[], okFiles=0; const failed=[];
   for(const file of list){
     st.innerHTML=`⏳ 표 파일 읽는 중… ${esc(file.name)}`;
     try{
@@ -1016,9 +1041,24 @@ async function readSheets(list){
       const ws=wb.Sheets[wb.SheetNames[0]];
       const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:true}).filter(r=>r.some(c=>String(c).trim()!==""));
       if(rows.length<2){ failed.push(esc(file.name)+"(빈/데이터 부족)"); continue; }
-      if(!headers) headers=rows[0].map((h,i)=>String(h).trim()||("열"+(i+1)));   // 첫 파일 머리글을 공통 기준으로
-      allRows.push(...rows.slice(1));                                            // 각 파일 첫 행=머리글로 보고 데이터만 누적
-      okFiles++;
+      const hi=findHeaderRow(rows);                       // 진짜 머리글 행 위치
+      const {grade,subject}=metaFrom(rows,hi);            // 파일별 학년·교과목
+      const hdr=rows[hi].map((h,i)=>String(h).trim()||("열"+(i+1)));
+      if(!headers){
+        baseLen=hdr.length;
+        headers=[...hdr,"학년(자동)","과목(자동)"];        // 안내 줄에서 뽑은 값을 열로 추가
+        nameCol=hdr.findIndex(h=>/성명|이름/.test(h));
+      }
+      let kept=0;
+      for(let i=hi+1;i<rows.length;i++){
+        const r=rows[i];
+        if(isHeaderRow(r)) continue;                                                  // 페이지마다 반복되는 머리글
+        if(nameCol>=0 && !String(r[nameCol]==null?"":r[nameCol]).trim()) continue;    // 제목·날짜·쪽번호·학교명 등 레이아웃 행
+        const row=r.slice(0,baseLen); while(row.length<baseLen) row.push("");
+        row.push(grade, subject);
+        allRows.push(row); kept++;
+      }
+      if(kept) okFiles++; else failed.push(esc(file.name)+"(학생 행 없음)");
     }catch(e){
       failed.push(esc(file.name)+(/\.cell$/i.test(file.name)?"(한셀→xlsx로 저장 필요)":"(형식 확인)"));
     }
