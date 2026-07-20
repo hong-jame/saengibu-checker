@@ -290,6 +290,7 @@
       <label class="switch"><input type="checkbox" id="cForm" checked> 형식 규칙(특수문자·명사형종결·한글원칙·공란)</label>
       <label class="switch"><input type="checkbox" id="cPunct" checked> 문장부호·띄어쓰기(연속 공백·부호 모양)</label>
       <label class="switch"><input type="checkbox" id="cJosa" checked> 조사(을/를·이/가·과/와·으로/로)</label>
+      <label class="switch"><input type="checkbox" id="cSpell" checked> 오탈자 사전(직접 등록)</label>
       <label class="switch"><input type="checkbox" id="cEdu" checked> 사교육 유발 요소</label>
       <label class="switch"><input type="checkbox" id="cBlind" checked> 고교 블라인드</label>
       <label class="switch"><input type="checkbox" id="cDup" checked> 학생 간 복사·중복</label>
@@ -298,6 +299,10 @@
     <div class="field" style="margin-top:8px">
       <label>영문 허용 단어 (한글원칙 예외 · 쉼표로 구분)</label>
       <input type="text" id="allowEng" value="CEO,PD,UCC,IT,POP,CF,TV,PAPS,SNS,PPT,AI,GPS,DNA,RNA,PCR,LED,USB,PC,IoT,3D,2D,cm,km,mm,kg,mg,kW,ml,mol,pH">
+    </div>
+    <div class="field" style="margin-top:8px">
+      <label>오탈자 사전 (<b>틀린말=바른말</b>, 쉼표로 구분) — 자주 나오는 오타를 직접 등록하면 점검·윤문에 반영</label>
+      <input type="text" id="spellTerms" value="녹냄=녹여냄, 몇일=며칠, 역활=역할, 갯수=개수, 설레임=설렘, 금새=금세, 구지=굳이, 오랫만=오랜만, 됬=됐">
     </div>
     <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <button class="btn" id="runBtn">점검 실행 ▶</button>
@@ -688,6 +693,14 @@ function analyze(text, opts, ctx, what){
     }
   }
 
+  // 오탈자 사전(사용자 등록) — 등록한 오타를 정확히 잡아 대체어 제안
+  if(opts.spell && opts.spellPairs && opts.spellPairs.length){
+    const g=checkSpell(t, opts.spellPairs);
+    for(const [wrong,[right,ranges]] of g){
+      push("warn","오탈자",`‘${wrong}’ → <b>‘${right}’</b> (등록된 오탈자) · ${ranges.length}곳`, ranges);
+    }
+  }
+
   const chars=[...t.replace(/\n/g,"")].length;   // 표시용 글자수(검증하지 않음)
   return {issues, chars};
 }
@@ -776,6 +789,34 @@ function fixJosa(text){
   return {text:out, n};
 }
 
+/* ---------------- 오탈자 사전(사용자 등록) ---------------- */
+// "틀린말=바른말, …" 문자열 → [[틀린,바른],…]. 규칙으로 못 잡는 오타를 교사가 직접 등록해 잡는다.
+function parseSpell(str){
+  const out=[];
+  for(const pair of (str||"").split(/[,\n]/)){
+    const m=pair.split("=");
+    if(m.length===2){ const a=m[0].trim(), b=m[1].trim(); if(a && b && a!==b) out.push([a,b]); }
+  }
+  return out;
+}
+// 텍스트에서 오탈자 위치 찾기: {ranges, groups:Map(틀린→[바른,횟수])}
+function checkSpell(text, pairs){
+  const groups=new Map();
+  for(const [wrong,right] of pairs){
+    const rs=findAll(text, wrong, "warn");
+    if(rs.length) groups.set(wrong, [right, rs]);
+  }
+  return groups;
+}
+function fixSpell(text, pairs){
+  let n=0, t=text||"";
+  for(const [wrong,right] of pairs){
+    const parts=t.split(wrong);
+    if(parts.length>1){ n+=parts.length-1; t=parts.join(right); }
+  }
+  return {text:t, n};
+}
+
 function checkEndings(raw){
   const t=maskQuotes(raw);
   const bad=[];
@@ -835,6 +876,11 @@ function polishRules(text, o){
   }
   if(o.josa!==false){                                    // 조사 교정(학생를→학생을, 학교으로→학교로)
     const r=fixJosa(t); if(r.n){ t=r.text; ch.push(`조사 ${r.n}건 교정`); }
+  }
+  if(o.spell!==false){                                   // 등록된 오탈자 교정(녹냄→녹여냄 등)
+    const el=document.getElementById("spellTerms");
+    const r=fixSpell(t, o.spellPairs || parseSpell(el?el.value:""));
+    if(r.n){ t=r.text; ch.push(`오탈자 ${r.n}건 교정`); }
   }
   { const b=t;                                           // 문장부호·띄어쓰기 정규화
     t=t.replace(/[，、]/g,",").replace(/[．。｡]/g,".").replace(/､/g,",")
@@ -1172,7 +1218,8 @@ document.getElementById("runBtn").onclick=async ()=>{
     return;
   }
   const opts={
-    ban:cBan.checked, form:cForm.checked, punct:cPunct.checked, josa:cJosa.checked, edu:cEdu.checked, blind:cBlind.checked, dup:cDup.checked, neis:cNeis.checked,
+    ban:cBan.checked, form:cForm.checked, punct:cPunct.checked, josa:cJosa.checked, spell:cSpell.checked, edu:cEdu.checked, blind:cBlind.checked, dup:cDup.checked, neis:cNeis.checked,
+    spellPairs:parseSpell(document.getElementById("spellTerms").value),
     blindTerms:document.getElementById("blindTerms").value.split(",").map(x=>x.trim()).filter(Boolean),
     allowEng:document.getElementById("allowEng").value.split(",").map(x=>x.trim()).filter(Boolean)
   };
@@ -1305,7 +1352,7 @@ const CHECKLIST=[
   {no:"11-③", ref:"p.117·127~128", q:"과세특 기재 범위를 준수하였는가?",
    d:"학생참여형 수업 및 수업과 연계된 수행평가 등에서 교사가 직접 관찰·평가한 내용", manual:true},
   {no:"11-④", ref:"—", q:"비문이나 오탈자는 없는가?",
-   d:"자동은 조사(을/를·이/가)·문장부호·띄어쓰기만 확인 — 비문 여부는 교사 판단", auto:["조사","문장부호","띄어쓰기"], manual:true},
+   d:"자동은 조사(을/를·이/가)·등록 오탈자·문장부호·띄어쓰기만 확인 — 비문 여부는 교사 판단", auto:["조사","오탈자","문장부호","띄어쓰기"], manual:true},
 ];
 function renderChecklist(res){
   const cnt={};
